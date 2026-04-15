@@ -1,0 +1,27 @@
+{
+  "colors": {
+    "background": "#08111f",
+    "backgroundAlt": "#0f1a2e",
+    "surface": "#111d33",
+    "surfaceAlt": "#162643",
+    "text": "#edf2ff",
+    "muted": "#9eb0cd",
+    "border": "rgba(186, 205, 255, 0.14)",
+    "primary": "#f7b955",
+    "primarySoft": "rgba(247, 185, 85, 0.14)",
+    "success": "#4dd4a3",
+    "warning": "#f3c969",
+    "danger": "#ff7a7a"
+  },
+  "typography": {
+    "heading": "\"Georgia\", \"Times New Roman\", serif",
+    "body": "\"Trebuchet MS\", \"Segoe UI\", sans-serif",
+    "mono": "\"SFMono-Regular\", \"Cascadia Mono\", monospace"
+  },
+  "fontSizes": {
+    "display": "clamp(2.4rem, 5vw, 4.8rem)",
+    "title": "1.1rem",
+    "body": "0.98rem",
+    "small": "0.82rem"
+  }
+}
