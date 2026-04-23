@@ -1,0 +1,28 @@
+{
+  "name": "chequeo-predios-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "seed:admin": "node scripts/seedAdmin.js",
+    "migrate:lots": "node scripts/migrateToLots.js",
+    "migrate:fields": "node scripts/migrateFieldUpdates.js",
+    "seed:test": "node scripts/seedTestData.js",
+    "create:user": "node scripts/createUser.js"
+  },
+  "dependencies": {
+    "@tmcw/togeojson": "^7.1.2",
+    "@xmldom/xmldom": "^0.9.10",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "multer": "^2.1.1",
+    "mysql2": "^3.11.3"
+  }
+}
