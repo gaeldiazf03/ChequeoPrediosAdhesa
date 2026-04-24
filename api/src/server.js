@@ -20,6 +20,30 @@ app.use(
 app.use(helmet())
 app.use(morgan('dev'))
 app.use(express.json({ limit: '1mb' }))
+app.use(
+  express.text({
+    limit: '1mb',
+    type: (req) => {
+      const contentType = req.headers['content-type'] ?? ''
+      return !String(contentType).includes('application/json')
+    },
+  }),
+)
+app.use((req, _res, next) => {
+  if (typeof req.body === 'string') {
+    const trimmedBody = req.body.trim()
+
+    if (trimmedBody.startsWith('{') || trimmedBody.startsWith('[')) {
+      try {
+        req.body = JSON.parse(trimmedBody)
+      } catch {
+        // Leave non-JSON text bodies untouched for routes that may need them.
+      }
+    }
+  }
+
+  next()
+})
 
 app.get('/health', async (_req, res) => {
   try {
