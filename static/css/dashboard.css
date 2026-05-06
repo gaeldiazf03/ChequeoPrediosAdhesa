@@ -1,0 +1,59 @@
+body {
+    font-family: sans-serif;
+    background-color: #f4f4f9;
+    padding: 40px;
+}
+
+h1 {
+    text-align: center;
+    color: #333;
+}
+
+.slots-container {
+    display: flex;
+    justify-content: space-around;
+    margin-top: 50px;
+}
+
+.slot {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    width: 30%;
+    text-align: center;
+    border: 2px solid #ddd;
+}
+
+.slot h3 {
+    margin-top: 0;
+}
+
+.btn {
+    display: inline-block;
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 10px;
+    background: #007bff;
+    color: white;
+    text-decoration: none;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+.btn-delete {
+    background: #dc3545;
+}
+
+.btn-empty {
+    background: #28a745;
+}
+
+.metadata {
+    font-size: 12px;
+    color: #666;
+    margin-top: 15px;
+    text-align: left;
+}

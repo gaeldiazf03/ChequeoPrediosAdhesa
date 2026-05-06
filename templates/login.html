@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Iniciar Sesión - Adhesa</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/login.css') }}">
+</head>
+<body>
+
+    <div class="login-container">
+        <h2>Bienvenido</h2>
+        <!-- El form apunta a la misma ruta y usa POST -->
+        <form action="/" method="POST">
+            <input type="text" name="username" placeholder="Usuario" required>
+            <input type="password" name="password" placeholder="Contraseña" required>
+            <button type="submit">Ingresar</button>
+        </form>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/login.js') }}"></script>
+
+</body>
+</html>
