@@ -1,6 +1,8 @@
 // Inicializar mapa
 var map = L.map('map').setView([22.2331, -97.8611], 13); // Centrado en Tampico
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+}).addTo(map);
 
 // Capa donde se guardarán los dibujos y el KML cargado
 var drawnItems = new L.FeatureGroup();
@@ -246,7 +248,7 @@ if (puedeEditar) map.addControl(drawControl);
 map.on('draw:edited', registrarCambio);
 map.on('draw:deleted', registrarCambio);
 
-setInterval(guardarAutomaticamente, 10000);
+setInterval(guardarAutomaticamente, 60000);
 
 // Auto-carga desde la BD
 if (slotId) {
@@ -294,7 +296,7 @@ setInterval(function () {
             }
         })
         .catch(error => console.error("Error validando permisos:", error));
-}, 1000);
+}, 60000);
 
 function exportarKML() {
     var geojsonData = drawnItems.toGeoJSON();
@@ -314,4 +316,43 @@ function exportarKML() {
             a.remove();
         })
         .catch(error => console.error('Error al exportar:', error));
+}
+
+function descargarYEnviarReporte(btn) {
+    var textoOriginal = btn.innerHTML;
+    btn.innerHTML = "Generando...";
+    btn.disabled = true;
+
+    // Tomamos todos los polígonos dibujados
+    var geojson = drawnItems.toGeoJSON();
+
+    fetch('/api/reporte_mapa/' + slotId, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(geojson)
+    })
+    .then(res => {
+        if (!res.ok) throw new Error("Error en el servidor");
+        return res.blob();
+    })
+    .then(blob => {
+        // Truco para descargar archivos generados vía AJAX (Fetch)
+        var url = window.URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = "Avances_Proyecto_" + slotId + ".csv";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        
+        btn.innerHTML = textoOriginal;
+        btn.disabled = false;
+        alert("¡Reporte de avances enviado por correo y descargado en tu equipo con éxito!");
+    })
+    .catch(error => {
+        console.error(error);
+        alert("Ocurrió un error al generar el reporte.");
+        btn.innerHTML = textoOriginal;
+        btn.disabled = false;
+    });
 }
