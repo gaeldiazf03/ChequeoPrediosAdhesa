@@ -10,7 +10,9 @@ class DatabaseManager:
 
     def _get_connection(self):
         """Crea y retorna una conexión a la base de datos."""
-        return sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
 
     def init_db(self):
         """Inicializa las tablas y las columnas necesarias."""

@@ -1,63 +1,64 @@
 <!DOCTYPE html>
 <html lang="es">
 
-<head>
-    <meta charset="UTF-8">
-    <title>Editor KML</title>
-    <!-- CSS de Leaflet y Leaflet Draw -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/mapa.css') }}">
-</head>
+    <head>
+        <meta charset="UTF-8">
+        <title>Editor KML</title>
+        <link rel="stylesheet"
+            href="https://unpkg.com/leaflet/dist/leaflet.css" />
+        <link rel="stylesheet"
+            href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+        <link rel="stylesheet"
+            href="{{ url_for('static', filename='css/mapa.css') }}">
+        <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    </head>
 
-<body>
-    <h2>Editor y Creador de Áreas KML</h2>
+    <body>
+        <h2>Editor y Creador de Áreas KML</h2>
 
-    <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 10px;">
-        {% if puede_agregar %}
-        <button id="btnCrearLote" onclick="toggleDibujo()"
-            style="background-color: #28a745; margin-right: 10px; margin-bottom: 0;">Crear
-            Lote</button>
-        {% else %}
-        <button id="btnCrearLote" disabled
-            style="background-color: #adb5bd; margin-right: 10px; margin-bottom: 0; cursor: not-allowed;">Crear
-            Lote (sin permiso)</button>
-        {% endif %}
+        <div
+            style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 10px;">
+            {% if puede_agregar %}
+            <button id="btnCrearLote" onclick="toggleDibujo()"
+                style="background-color: #28a745; margin-right: 10px; margin-bottom: 0;">Crear
+                Lote</button>
+            {% else %}
+            <button id="btnCrearLote" disabled
+                style="background-color: #adb5bd; margin-right: 10px; margin-bottom: 0; cursor: not-allowed;">Crear
+                Lote (sin permiso)</button>
+            {% endif %}
 
-        <button id="btnGuardarManual" onclick="guardarManual()"
-            style="background-color: #17a2b8; margin-right: 10px; margin-bottom: 0;">Guardar
-            Cambios</button>
-        <span id="estadoGuardado" style="font-size: 14px; color: #666;">Listo</span>
-        <button onclick="descargarYEnviarReporte(this)"
-            style="background: #17a2b8; color: white; padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer; float: right; font-weight: bold;">
-            📧 Enviar y Descargar Avances
-        </button>
-    </div>
+            <button id="btnGuardarManual" onclick="guardarManual()"
+                style="background-color: #17a2b8; margin-right: 10px; margin-bottom: 0;">Guardar
+                Cambios</button>
+            <span id="estadoGuardado"
+                style="font-size: 14px; color: #666;">Listo</span>
+            <button onclick="descargarYEnviarReporte(this)"
+                style="background: #17a2b8; color: white; padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer; float: right; font-weight: bold;">
+                📧 Enviar y Descargar Avances
+            </button>
 
-    <div id="map"></div>
-    <button onclick="exportarKML()">Exportar a KML</button>
-    <button onclick="descargarYEnviarReporte(this)"
-        style="background: #17a2b8; color: white; padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer; float: right; font-weight: bold;">
-        📧 Enviar y Descargar Avances</button>
+            <button onclick="exportarKML()">Exportar a KML</button>
+        </div>
 
-    <!-- Scripts -->
-    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
-    <script src="https://api.mapbox.com/mapbox.js/plugins/leaflet-omnivore/v0.3.1/leaflet-omnivore.min.js"></script>
+        <div id="map" data-slot-id="{{ slot_id }}"
+            data-puede-agregar="{{ puede_agregar|lower }}"
+            data-puede-editar="{{ puede_editar|lower }}"
+            data-es-admin="{{ es_admin|lower }}"
+            data-puede-marcar-tareas="{{ puede_marcar_tareas|lower }}"
+            data-puede-agregar-tareas="{{ puede_agregar_tareas|lower }}"
+            data-usuario-actual="{{ usuario_actual }}"
+            data-usuarios-lista="{{ usuarios_lista_json }}"></div>
 
-    <script>
-        var slotId = {{ slot_id| int }};
-        var puedeAgregar = {{ 'true' if puede_agregar else 'false' }};
-        var puedeEditar = {{ 'true' if puede_editar else 'false' }};
-        var esAdmin = {{ 'true' if session.get('rol') == 'admin' else 'false' }};
-        var puedeAgregarTareas = {{ 'true' if puede_agregar_tareas else 'false' }};
-        var puedeMarcarTareas = {{ 'true' if puede_marcar_tareas else 'false' }};
-        var usuarioActual = "{{ usuario_actual }}";
-        var usuariosLista = {{ usuarios_lista | tojson }};
-    </script>
+        <!-- Scripts -->
+        <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+        <script
+            src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+        <script
+            src="https://api.mapbox.com/mapbox.js/plugins/leaflet-omnivore/v0.3.1/leaflet-omnivore.min.js"></script>
 
-    <script src="{{ url_for('static', filename='js/mapa.js') }}"></script>
+        <script src="{{ url_for('static', filename='js/mapa.js') }}"></script>
 
-</body>
+    </body>
 
 </html>

@@ -1,12 +1,8 @@
 import simplekml
 import json
 import os
-import smtplib
-import io
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.mime.base import MIMEBase
-from email import encoders
+import subprocess
+import tempfile
 
 def convertir_geojson_a_kml(data):
     kml = simplekml.Kml()
@@ -26,34 +22,50 @@ def convertir_geojson_a_kml(data):
                     pol.description = json.dumps(props)
     return kml.kml()
 
-def enviar_reporte_por_correo(rango, csv_string, nombre_archivo, root_path):
-    ruta_config = os.path.join(root_path, 'config', 'mail.json')
-    if not os.path.exists(ruta_config): return False
-    
-    with open(ruta_config) as f:
-        conf = json.load(f)
-    
-    msg = MIMEMultipart()
-    msg['From'] = conf['email_remitente']
-    msg['To'] = conf['email_destino']
-    msg['Subject'] = f"Reporte Adhesa - {rango.capitalize()}"
-    
-    body = f"Se adjunta el reporte de actividad: {rango}."
-    msg.attach(MIMEText(body, 'plain', 'utf-8'))
-    
-    part = MIMEBase('application', 'octet-stream')
-    csv_bytes = ('\ufeff' + csv_string).encode('utf-8') # UTF-8 con BOM
-    part.set_payload(csv_bytes)
-    encoders.encode_base64(part)
-    part.add_header('Content-Disposition', f"attachment; filename={nombre_archivo}")
-    msg.attach(part)
-    
+
+def _escapar_powershell(valor):
+    return str(valor).replace("'", "''")
+
+def enviar_reporte_por_correo(rango, csv_string, nombre_archivo, abrir_outlook=False):
+    destinatario = os.getenv('MAIL_RECIPIENT') or os.getenv('MAIL_DESTINO') or os.getenv('EMAIL_DESTINO')
+
+    if not destinatario:
+        return False
+
     try:
-        server = smtplib.SMTP(conf['smtp_server'], conf['smtp_port'])
-        server.starttls()
-        server.login(conf['email_remitente'], conf['password'])
-        server.sendmail(conf['email_remitente'], conf['email_destino'], msg.as_string())
-        server.quit()
+        if abrir_outlook:
+            archivo_temp = tempfile.NamedTemporaryFile(delete=False, suffix='_' + nombre_archivo)
+            try:
+                archivo_temp.write(('\ufeff' + csv_string).encode('utf-8'))
+                archivo_temp.close()
+
+                asunto = f"Reporte Adhesa - {str(rango).capitalize()}"
+                cuerpo = f"Se adjunta el reporte de actividad: {rango}."
+                script = f"""
+$ErrorActionPreference = 'Stop'
+$outlook = New-Object -ComObject Outlook.Application
+$mail = $outlook.CreateItem(0)
+$mail.To = '{_escapar_powershell(destinatario)}'
+$mail.Subject = '{_escapar_powershell(asunto)}'
+$mail.Body = '{_escapar_powershell(cuerpo)}'
+$mail.Attachments.Add('{_escapar_powershell(archivo_temp.name)}')
+$mail.Display()
+"""
+                subprocess.run(
+                    ['powershell', '-NoProfile', '-STA', '-Command', script],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+            finally:
+                try:
+                    archivo_temp.close()
+                except Exception:
+                    pass
+                try:
+                    os.unlink(archivo_temp.name)
+                except Exception:
+                    pass
         return True
     except Exception as e:
         print(f"Error correo: {e}")

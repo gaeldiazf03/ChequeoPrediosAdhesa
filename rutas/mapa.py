@@ -1,8 +1,10 @@
-from flask import Blueprint, render_template, session, redirect, url_for, request, make_response, current_app, send_file, Response
+from flask import Blueprint, render_template, session, redirect, url_for, request, make_response, send_file, Response
 from database import db
 from utils.funciones import convertir_geojson_a_kml, enviar_reporte_por_correo
-import io, csv
+import io
 from datetime import datetime
+from services.reportes import generar_csv_logs, generar_csv_mapa, generar_word_mapa
+import json
 
 mapa_bp = Blueprint('mapa', __name__)
 
@@ -19,7 +21,6 @@ def visor(slug):
     nombre_real = slot_info[1]
     usuario = session.get('usuario', 'Desconocido')
     
-    # --- CORRECCIÓN CRÍTICA: Recuperar el KML para el visor ---
     kml_contenido = db.obtener_kml_por_id(slot_id)
     
     db.actualizar_metadatos_slot(slot_id, usuario, datetime.now().strftime("%Y-%m-%d %H:%M"))
@@ -29,13 +30,14 @@ def visor(slug):
     return render_template('mapa.html', 
                            slot_id=slot_id, 
                            nombre_mapa=nombre_real, 
-                           kml_data=kml_contenido, # <--- Enviamos los datos aquí
+                           kml_data=kml_contenido,
                            puede_agregar=(rol == 'admin' or bool(db_add)),
                            puede_editar=(rol == 'admin' or bool(db_edit)),
                            puede_agregar_tareas=(rol == 'admin' or bool(db_tar)),
                            puede_marcar_tareas=(rol == 'admin' or bool(db_check)),
-                           usuario_actual=usuario, 
-                           usuarios_lista=[u[1] for u in db.obtener_todos_los_usuarios()])
+                           usuario_actual=usuario,
+                           es_admin=(rol == 'admin'),
+                           usuarios_lista_json=json.dumps([u[1] for u in db.obtener_todos_los_usuarios()]))
 
 @mapa_bp.route('/api/guardar_kml/<int:slot_id>', methods=['POST'])
 def guardar(slot_id):
@@ -64,15 +66,10 @@ def reporte(rango):
         return "Acceso denegado", 403
         
     logs = db.obtener_logs_por_rango(rango)
-    si = io.StringIO()
-    cw = csv.writer(si)
-    cw.writerow(['Usuario', 'Acción', 'Detalles', 'Fecha'])
-    cw.writerows(logs)
-    
-    csv_str = si.getvalue()
+    csv_str = generar_csv_logs(logs)
     nombre = f"reporte_{rango}.csv"
     
-    enviar_reporte_por_correo(rango, csv_str, nombre, current_app.root_path)
+    enviar_reporte_por_correo(rango, csv_str, nombre, abrir_outlook=True)
     
     resp = make_response('\ufeff' + csv_str)
     resp.headers["Content-Disposition"] = f"attachment; filename={nombre}"
@@ -118,39 +115,35 @@ def reporte_mapa(slot_id):
     if not session.get('logeado'):
         return "Acceso denegado", 401
 
-    data = request.get_json(silent=True)
+    payload = request.get_json(silent=True) or {}
+    data = payload.get('geojson', payload)
     if not data:
         return "Sin datos", 400
 
-    si = io.StringIO()
-    cw = csv.writer(si)
-    
-    # Diseñamos un reporte enfocado en el trabajo de campo
-    cw.writerow(['Nombre del Lote', 'Responsable', 'Tarea', 'Estado'])
+    csv_str, nombre_archivo = generar_csv_mapa(data, slot_id)
+    enviar_reporte_por_correo(
+        f"Avances del Proyecto {slot_id}",
+        csv_str,
+        nombre_archivo,
+        abrir_outlook=bool(payload.get('abrir_outlook')),
+    )
 
-    if 'features' in data:
-        for f in data['features']:
-            props = f.get('properties', {})
-            nombre = props.get('name', 'Sin nombre')
-            resp = props.get('responsable', 'Sin asignar')
-            tareas = props.get('tareas', [])
-
-            if not tareas:
-                cw.writerow([nombre, resp, 'Sin tareas', '-'])
-            else:
-                for t in tareas:
-                    estado = 'Completada' if t.get('completada') else 'Pendiente'
-                    texto = t.get('texto', '')
-                    cw.writerow([nombre, resp, texto, estado])
-
-    csv_str = si.getvalue()
-    nombre_archivo = f"Avances_Proyecto_{slot_id}_{datetime.now().strftime('%Y%m%d')}.csv"
-
-    # Reutilizamos la función de correo enviando este CSV específico
-    enviar_reporte_por_correo(f"Avances del Proyecto {slot_id}", csv_str, nombre_archivo, current_app.root_path)
-
-    # Devolvemos el CSV listo para descargarse con formato UTF-8 (con BOM) para Excel
     resp = make_response('\ufeff' + csv_str)
     resp.headers["Content-Disposition"] = f"attachment; filename={nombre_archivo}"
     resp.headers["Content-type"] = "text/csv; charset=utf-8"
     return resp
+
+@mapa_bp.route('/api/reporte_word/<int:slot_id>', methods=['POST'])
+def reporte_word(slot_id):
+    if not session.get('logeado'): return "No autorizado", 401
+    
+    data = request.get_json(silent=True)
+    if not data: return "Sin datos", 400
+
+    target, nombre_archivo = generar_word_mapa(data, slot_id)
+    return send_file(
+        target,
+        as_attachment=True,
+        download_name=nombre_archivo,
+        mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    )

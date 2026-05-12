@@ -1,3 +1,14 @@
+// Variables de entorno recuperadas mediante HTML dataset
+var mapContainer = document.getElementById('map');
+var slotId = mapContainer.dataset.slotId;
+var puedeAgregar = mapContainer.dataset.puedeAgregar === 'true';
+var puedeEditar = mapContainer.dataset.puedeEditar === 'true';
+var esAdmin = mapContainer.dataset.esAdmin === 'true';
+var puedeMarcarTareas = mapContainer.dataset.puedeMarcarTareas === 'true';
+var puedeAgregarTareas = mapContainer.dataset.puedeAgregarTareas === 'true';
+var usuarioActual = mapContainer.dataset.usuarioActual;
+var usuariosLista = mapContainer.dataset.usuariosLista ? JSON.parse(mapContainer.dataset.usuariosLista) : [];
+
 // Inicializar mapa
 var map = L.map('map').setView([22.2331, -97.8611], 13); // Centrado en Tampico
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
@@ -115,6 +126,13 @@ function crearContenidoPopup(layer) {
                     <button onclick="agregarTarea()" style="padding: 5px 10px; background: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer;">Add</button>
                 </div>`;
     }
+
+    // Dentro de crearContenidoPopup agregamos los nuevos campos
+    html += `<label>Costo Estimado ($):</label>
+            <input type="number" value="${props.costo || 0}" onchange="actualizarDato('costo', this.value)" style="width:100%; margin-bottom:10px;">`;
+
+    html += `<label>Incidencias / Notas:</label>
+            <textarea onchange="actualizarDato('incidencias', this.value)" style="width:100%; height:60px;">${props.incidencias || ''}</textarea>`;
 
     html += `</div>`;
     return html;
@@ -323,36 +341,59 @@ function descargarYEnviarReporte(btn) {
     btn.innerHTML = "Generando...";
     btn.disabled = true;
 
-    // Tomamos todos los polígonos dibujados
     var geojson = drawnItems.toGeoJSON();
 
-    fetch('/api/reporte_mapa/' + slotId, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(geojson)
-    })
-    .then(res => {
-        if (!res.ok) throw new Error("Error en el servidor");
-        return res.blob();
-    })
-    .then(blob => {
-        // Truco para descargar archivos generados vía AJAX (Fetch)
-        var url = window.URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = url;
-        a.download = "Avances_Proyecto_" + slotId + ".csv";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        
-        btn.innerHTML = textoOriginal;
-        btn.disabled = false;
-        alert("¡Reporte de avances enviado por correo y descargado en tu equipo con éxito!");
-    })
-    .catch(error => {
-        console.error(error);
-        alert("Ocurrió un error al generar el reporte.");
-        btn.innerHTML = textoOriginal;
-        btn.disabled = false;
+    Swal.fire({
+        title: 'Abrir Outlook',
+        text: '¿Quieres abrir Outlook para preparar el correo con el reporte?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, abrir Outlook',
+        cancelButtonText: 'No, solo descargar'
+    }).then(function (result) {
+        var abrirOutlook = result.isConfirmed;
+
+        fetch('/api/reporte_mapa/' + slotId, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                geojson: geojson,
+                abrir_outlook: abrirOutlook
+            })
+        })
+        .then(function (res) {
+            if (!res.ok) throw new Error("Error en el servidor");
+            return res.blob();
+        })
+        .then(function (blob) {
+            var url = window.URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = "Avances_Proyecto_" + slotId + ".csv";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+
+            btn.innerHTML = textoOriginal;
+            btn.disabled = false;
+
+            Swal.fire({
+                title: 'Reporte Generado',
+                text: abrirOutlook ? 'Outlook se abrió con el reporte listo.' : 'El reporte se descargó correctamente.',
+                icon: 'success',
+                confirmButtonText: 'OK'
+            });
+        })
+        .catch(function (error) {
+            console.error(error);
+            Swal.fire({
+                title: 'Error',
+                text: 'Ocurrió un error al generar el reporte.',
+                icon: 'error',
+                confirmButtonColor: '#d33'
+            });
+            btn.innerHTML = textoOriginal;
+            btn.disabled = false;
+        });
     });
 }

@@ -26,3 +26,23 @@ function cerrarModalPass() {
     document.getElementById('modalPass').style.display = 'none';
     document.querySelector('#formCambiarPass input[name="nueva_password"]').value = '';
 }
+
+// Función para mostrar el spinner de carga al subir KML
+function mostrarSpinnerYEnviar(inputElement) {
+    if (inputElement.files && inputElement.files.length > 0) {
+        document.getElementById('spinnerCarga').style.display = 'flex';
+        inputElement.form.submit();
+    }
+}
+
+// Lógica para cerrar los modales si se hace clic en el área oscura del fondo
+window.onclick = function(event) {
+    var modalEliminar = document.getElementById("modalEliminar");
+    var modalPass = document.getElementById("modalPass");
+    
+    if (event.target == modalEliminar) {
+        cerrarModal();
+    } else if (event.target == modalPass) {
+        cerrarModalPass();
+    }
+}

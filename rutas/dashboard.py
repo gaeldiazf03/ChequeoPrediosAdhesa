@@ -19,7 +19,7 @@ def cargar(slot_id):
     
     archivo = request.files.get('kml_file')
     if archivo and archivo.filename.endswith('.kml'):
-        db.guardar_kml_en_slot(slot_id, archivo.read().decode('utf-8'))
+        db.guardar_kml_en_slot(slot_id, archivo.read().decode('utf-8', errors='replace'))
         db.registrar_log(session.get('usuario'), "Carga KML", f"Slot ID: {slot_id}")
     
     return redirect(url_for('dashboard.index'))

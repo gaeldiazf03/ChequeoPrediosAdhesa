@@ -8,6 +8,18 @@
 </head>
 
 <body>
+    <!-- Overlay de Spinner -->
+    <div id="spinnerCarga" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.9); z-index: 9999; justify-content: center; align-items: center; flex-direction: column;">
+        <div style="border: 5px solid #f3f3f3; border-top: 5px solid #007bff; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite;"></div>
+        <p style="margin-top: 15px; font-weight: bold; font-family: sans-serif; color: #333; font-size: 16px;">Cargando KML, por favor espera...</p>
+        <style>
+            @keyframes spin { 
+                0% { transform: rotate(0deg); } 
+                100% { transform: rotate(360deg); } 
+            }
+        </style>
+    </div>
+
     <h1>Selecciona un Slot de Trabajo</h1>
     <div style="text-align: center; margin-bottom: 20px;">
         <a href="/logout" class="btn" style="background-color: #6c757d; width: auto; padding: 5px 15px;">Cerrar
@@ -43,9 +55,8 @@
                 <label for="upload-{{ slot[0] }}" class="btn btn-empty" style="cursor: pointer; display: block">
                     Cargar Nuevo KML
                 </label>
-                <!-- onchange="this.form.submit()" hace que se envíe en cuanto seleccionas el archivo -->
                 <input id="upload-{{ slot[0] }}" type="file" name="kml_file" accept=".kml" style="display: none"
-                    onchange="this.form.submit()" />
+                    onchange="mostrarSpinnerYEnviar(this)" />
             </form>
 
             <div class="metadata">
