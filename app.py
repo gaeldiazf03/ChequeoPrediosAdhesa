@@ -1,12 +1,9 @@
 from flask import Flask
 import os
-from dotenv import load_dotenv
 from rutas.login import login_bp
 from rutas.dashboard import dashboard_bp
 from rutas.mapa import mapa_bp
 
-
-load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'tu_clave_secreta')

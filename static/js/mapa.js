@@ -336,64 +336,41 @@ function exportarKML() {
         .catch(error => console.error('Error al exportar:', error));
 }
 
-function descargarYEnviarReporte(btn) {
+function descargarReporte(btn) {
     var textoOriginal = btn.innerHTML;
-    btn.innerHTML = "Generando...";
+    btn.innerHTML = "Generando documento...";
     btn.disabled = true;
 
     var geojson = drawnItems.toGeoJSON();
 
-    Swal.fire({
-        title: 'Abrir Outlook',
-        text: '¿Quieres abrir Outlook para preparar el correo con el reporte?',
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonText: 'Sí, abrir Outlook',
-        cancelButtonText: 'No, solo descargar'
-    }).then(function (result) {
-        var abrirOutlook = result.isConfirmed;
-
-        fetch('/api/reporte_mapa/' + slotId, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                geojson: geojson,
-                abrir_outlook: abrirOutlook
-            })
-        })
-        .then(function (res) {
-            if (!res.ok) throw new Error("Error en el servidor");
-            return res.blob();
-        })
-        .then(function (blob) {
-            var url = window.URL.createObjectURL(blob);
-            var a = document.createElement('a');
-            a.href = url;
-            a.download = "Avances_Proyecto_" + slotId + ".csv";
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-
-            btn.innerHTML = textoOriginal;
-            btn.disabled = false;
-
-            Swal.fire({
-                title: 'Reporte Generado',
-                text: abrirOutlook ? 'Outlook se abrió con el reporte listo.' : 'El reporte se descargó correctamente.',
-                icon: 'success',
-                confirmButtonText: 'OK'
-            });
-        })
-        .catch(function (error) {
-            console.error(error);
-            Swal.fire({
-                title: 'Error',
-                text: 'Ocurrió un error al generar el reporte.',
-                icon: 'error',
-                confirmButtonColor: '#d33'
-            });
-            btn.innerHTML = textoOriginal;
-            btn.disabled = false;
-        });
+    // Asegúrate de apuntar a /api/reporte_word/ o /api/reporte_mapa/ según lo que necesites bajar
+    fetch('/api/reporte_word/' + slotId, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(geojson)
+    })
+    .then(res => {
+        if (!res.ok) throw new Error("Error en el servidor");
+        return res.blob();
+    })
+    .then(blob => {
+        var fileName = "Reporte_Avances_Slot_" + slotId + ".docx";
+        var url = window.URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        
+        btn.innerHTML = textoOriginal;
+        btn.disabled = false;
+        alert("¡Reporte descargado con éxito en tu equipo!");
+    })
+    .catch(error => {
+        console.error(error);
+        alert("Ocurrió un error al generar el reporte.");
+        btn.innerHTML = textoOriginal;
+        btn.disabled = false;
     });
 }

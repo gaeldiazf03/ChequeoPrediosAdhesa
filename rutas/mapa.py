@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, session, redirect, url_for, request, make_response, send_file, Response
 from database import db
-from utils.funciones import convertir_geojson_a_kml, enviar_reporte_por_correo
+from utils.funciones import convertir_geojson_a_kml
 import io
 from datetime import datetime
 from services.reportes import generar_csv_logs, generar_csv_mapa, generar_word_mapa
@@ -69,8 +69,6 @@ def reporte(rango):
     csv_str = generar_csv_logs(logs)
     nombre = f"reporte_{rango}.csv"
     
-    enviar_reporte_por_correo(rango, csv_str, nombre, abrir_outlook=True)
-    
     resp = make_response('\ufeff' + csv_str)
     resp.headers["Content-Disposition"] = f"attachment; filename={nombre}"
     resp.headers["Content-type"] = "text/csv; charset=utf-8"
@@ -121,12 +119,6 @@ def reporte_mapa(slot_id):
         return "Sin datos", 400
 
     csv_str, nombre_archivo = generar_csv_mapa(data, slot_id)
-    enviar_reporte_por_correo(
-        f"Avances del Proyecto {slot_id}",
-        csv_str,
-        nombre_archivo,
-        abrir_outlook=bool(payload.get('abrir_outlook')),
-    )
 
     resp = make_response('\ufeff' + csv_str)
     resp.headers["Content-Disposition"] = f"attachment; filename={nombre_archivo}"
