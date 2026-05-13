@@ -8,6 +8,7 @@ var puedeMarcarTareas = mapContainer.dataset.puedeMarcarTareas === 'true';
 var puedeAgregarTareas = mapContainer.dataset.puedeAgregarTareas === 'true';
 var usuarioActual = mapContainer.dataset.usuarioActual;
 var usuariosLista = mapContainer.dataset.usuariosLista ? JSON.parse(mapContainer.dataset.usuariosLista) : [];
+var puedeVerCostos = mapContainer.dataset.puedeVerCostos === 'true';
 
 // Inicializar mapa
 var map = L.map('map').setView([22.2331, -97.8611], 13); // Centrado en Tampico
@@ -28,6 +29,48 @@ var opcionesPoligono = {
     shapeOptions: { color: '#b8860b', fillColor: '#E1AD01', fillOpacity: 0.5, weight: 2 }
 };
 var polygonDrawer = new L.Draw.Polygon(map, opcionesPoligono);
+
+var estilosPopup = {
+    contenedor: 'min-width: 250px; max-height: 400px; overflow-y: auto; font-family: sans-serif; padding-right: 5px;',
+    titulo: 'margin-top: 0; color: #2E7D32; border-bottom: 2px solid #81C784; padding-bottom: 5px;',
+    etiqueta: 'font-size: 12px; font-weight: bold; color: #666;',
+    etiquetaPequena: 'font-size: 11px; font-weight: bold;',
+    input: 'width:100%; margin-bottom:8px; padding:4px; box-sizing: border-box;'
+};
+
+function escaparHtml(valor) {
+    return String(valor == null ? '' : valor)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function construirOpcionesHTML(opciones, valorSeleccionado) {
+    return opciones.map(function (opcion) {
+        var seleccionado = opcion.valor === valorSeleccionado ? 'selected' : '';
+        return `<option value="${escaparHtml(opcion.valor)}" ${seleccionado}>${opcion.texto}</option>`;
+    }).join('');
+}
+
+function actualizarPopupActual(mutador) {
+    if (!capaActualPopup) return;
+    mutador(capaActualPopup);
+    registrarCambio();
+    guardarAutomaticamente();
+    capaActualPopup.setPopupContent(crearContenidoPopup(capaActualPopup));
+}
+
+function tienePermisoDeGuardado() {
+    return puedeAgregar || puedeEditar;
+}
+
+function crearFilaDosColumnas(columnaIzquierda, columnaDerecha) {
+    return `<div style="display: flex; gap: 5px; margin-bottom:8px;">
+                <div style="flex: 1;">${columnaIzquierda}</div>
+                <div style="flex: 1;">${columnaDerecha}</div>
+             </div>`;
+}
 
 function toggleDibujo() {
     if (!puedeAgregar) return;
@@ -75,92 +118,164 @@ function prepararCapa(layer) {
 
 function crearContenidoPopup(layer) {
     var props = layer.feature.properties;
-    var html = '<div style="min-width: 220px; font-family: sans-serif;">';
+    var puedeGestionarTareas = esAdmin || puedeAgregarTareas;
+    var puedeMarcar = esAdmin || puedeMarcarTareas || usuarioActual === props.responsable;
+    var opcionesSuelo = [
+        { valor: '', texto: 'Seleccione...' },
+        { valor: 'Arcilloso', texto: 'Arcilloso' },
+        { valor: 'Arenoso', texto: 'Arenoso' },
+        { valor: 'Franco', texto: 'Franco' },
+        { valor: 'Limoso', texto: 'Limoso' }
+    ];
+    var opcionesRiego = [
+        { valor: '', texto: 'Seleccione...' },
+        { valor: 'Temporal', texto: 'Temporal' },
+        { valor: 'Goteo', texto: 'Goteo' },
+        { valor: 'Gravedad', texto: 'Gravedad' },
+        { valor: 'Aspersión', texto: 'Aspersión' }
+    ];
+    var opcionesMaleza = [
+        { valor: 'Bajo', texto: 'Bajo' },
+        { valor: 'Medio', texto: 'Medio' },
+        { valor: 'Alto', texto: 'Alto' }
+    ];
+    var opcionesHumedad = [
+        { valor: 'Seco', texto: 'Seco' },
+        { valor: 'Óptimo', texto: 'Óptimo' },
+        { valor: 'Saturado', texto: 'Saturado' }
+    ];
+    var opcionesSanidad = [
+        { valor: 'Sano', texto: '🟢 Sano' },
+        { valor: 'Prevención', texto: '🟡 En Prevención' },
+        { valor: 'Plaga', texto: '🔴 Plaga' },
+        { valor: 'Enfermedad', texto: '🔴 Enfermedad' }
+    ];
+
+    var html = `<div style="${estilosPopup.contenedor}">`;
+    html += `<h4 style="${estilosPopup.titulo}">🚜 Ficha del Lote</h4>`;
 
     if (puedeEditar) {
-        html += `<input type="text" value="${props.name}" onchange="actualizarDato('name', this.value)" style="width: 100%; font-weight: bold; margin-bottom: 10px; padding: 5px; box-sizing: border-box;">`;
+        html += `<input type="text" value="${escaparHtml(props.name)}" onchange="actualizarDato('name', this.value)" style="${estilosPopup.input} font-weight: bold; margin-bottom: 10px; padding: 5px;">`;
     } else {
-        html += `<h3 style="margin-top:0; color:#333;">${props.name}</h3>`;
+        html += `<h3 style="margin-top:0; color:#333;">${escaparHtml(props.name)}</h3>`;
     }
 
-    html += `<label style="font-size: 12px; color: #666;">Responsable:</label><br>`;
+    html += `<label style="${estilosPopup.etiqueta}">Responsable:</label><br>`;
     if (puedeEditar) {
-        html += `<select onchange="actualizarDato('responsable', this.value)" style="width: 100%; margin-bottom: 15px; padding: 5px;">
-                    <option value="">Sin Responsable</option>`;
-        usuariosLista.forEach(u => {
-            var sel = (u === props.responsable) ? 'selected' : '';
-            html += `<option value="${u}" ${sel}>${u}</option>`;
-        });
+        html += `<select onchange="actualizarDato('responsable', this.value)" style="width: 100%; margin-bottom: 15px; padding: 5px;">`;
+        html += `<option value="">Sin Responsable</option>`;
+        html += usuariosLista.map(function (u) {
+            var seleccionado = u === props.responsable ? 'selected' : '';
+            return `<option value="${escaparHtml(u)}" ${seleccionado}>${escaparHtml(u)}</option>`;
+        }).join('');
         html += `</select>`;
     } else {
-        var respTexto = props.responsable ? props.responsable : "Sin Responsable";
-        html += `<p style="margin: 0 0 15px 0; font-weight: bold; color: #007bff;">${respTexto}</p>`;
+        html += `<p style="margin: 0 0 15px 0; font-weight: bold; color: #007bff;">${escaparHtml(props.responsable || 'Sin Responsable')}</p>`;
     }
 
-    html += `<label style="font-size: 12px; color: #666;">Tareas:</label>
+    html += `<label style="${estilosPopup.etiqueta}">Tareas:</label>
              <ul style="padding-left: 0; list-style: none; margin-top: 5px; margin-bottom: 15px;">`;
 
-    props.tareas.forEach((tarea, index) => {
-        // CORRECCIÓN: Usamos la variable de puente "esAdmin" y la nueva "puedeMarcarTareas"
-        var puedeMarcar = esAdmin || puedeMarcarTareas || usuarioActual === props.responsable;
+    props.tareas.forEach(function (tarea, index) {
         var checkAttr = tarea.completada ? 'checked' : '';
         var disableCheck = puedeMarcar ? '' : 'disabled';
         var estiloTexto = tarea.completada ? 'text-decoration: line-through; color: #aaa;' : 'color: #333;';
 
         html += `<li style="margin-bottom: 8px; display: flex; align-items: center;">
                     <input type="checkbox" ${checkAttr} ${disableCheck} onchange="toggleTarea(${index}, this.checked)" style="margin-right: 8px; cursor: pointer;">
-                    <span style="flex: 1; ${estiloTexto}">${tarea.texto}</span>`;
+                    <span style="flex: 1; ${estiloTexto}">${escaparHtml(tarea.texto)}</span>`;
 
-        // CORRECCIÓN: Solo el admin o el que tiene permiso de crearlas puede borrarlas
-        if (esAdmin || puedeAgregarTareas) {
+        if (puedeGestionarTareas) {
             html += ` <button onclick="eliminarTarea(${index})" style="color: white; background: #dc3545; border: none; cursor: pointer; border-radius: 3px; padding: 2px 6px; font-size: 10px; margin-left: 5px;">X</button>`;
         }
         html += `</li>`;
     });
     html += `</ul>`;
 
-    // CORRECCIÓN: Solo si puedes agregar tareas ves este input
-    if (esAdmin || puedeAgregarTareas) {
-        html += `<div style="display: flex; gap: 5px; border-top: 1px solid #eee; padding-top: 10px;">
+    if (puedeGestionarTareas) {
+        html += `<div style="display: flex; gap: 5px; border-top: 1px solid #eee; padding-top: 10px; margin-bottom: 15px;">
                     <input type="text" id="inputNuevaTarea" placeholder="Nueva tarea..." style="flex: 1; padding: 5px;">
                     <button onclick="agregarTarea()" style="padding: 5px 10px; background: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer;">Add</button>
                 </div>`;
     }
 
-    // Dentro de crearContenidoPopup agregamos los nuevos campos
-    html += `<label>Costo Estimado ($):</label>
-            <input type="number" value="${props.costo || 0}" onchange="actualizarDato('costo', this.value)" style="width:100%; margin-bottom:10px;">`;
+    html += `<div style="background: #f9f9f9; padding: 10px; border-radius: 5px; border: 1px solid #ddd;">
+                <h5 style="margin-top: 0; margin-bottom: 10px; color: #444;">Datos Agrícolas</h5>`;
 
-    html += `<label>Incidencias / Notas:</label>
-            <textarea onchange="actualizarDato('incidencias', this.value)" style="width:100%; height:60px;">${props.incidencias || ''}</textarea>`;
+    if (esAdmin || puedeVerCostos) {
+        html += `<label style="${estilosPopup.etiquetaPequena}">Costo Estimado ($):</label>
+                 <input type="number" value="${escaparHtml(props.costo || 0)}" onchange="actualizarDato('costo', this.value)" style="${estilosPopup.input}">`;
+    }
 
-    html += `</div>`;
+    html += `<label style="${estilosPopup.etiquetaPequena}">Variedad de Caña:</label>
+             <input type="text" placeholder="Ej. CP 72-2086" value="${escaparHtml(props.variedad_cana || '')}" onchange="actualizarDato('variedad_cana', this.value)" style="${estilosPopup.input}">`;
+
+    html += `<label style="${estilosPopup.etiquetaPequena}">Edad de Cultivo (Meses):</label>
+             <input type="number" min="0" value="${escaparHtml(props.edad_cultivo || '')}" onchange="actualizarDato('edad_cultivo', this.value)" style="${estilosPopup.input}">`;
+
+    html += `<label style="${estilosPopup.etiquetaPequena}">Tipo de Suelo:</label>
+             <select onchange="actualizarDato('tipo_suelo', this.value)" style="${estilosPopup.input}">
+                 ${construirOpcionesHTML(opcionesSuelo, props.tipo_suelo || '')}
+             </select>`;
+
+    html += crearFilaDosColumnas(
+        `<label style="${estilosPopup.etiquetaPequena}">Siembra:</label>
+         <input type="date" value="${escaparHtml(props.fecha_siembra || '')}" onchange="actualizarDato('fecha_siembra', this.value)" style="${estilosPopup.input}">`,
+        `<label style="${estilosPopup.etiquetaPequena}">Últ. Aplic.:</label>
+         <input type="date" value="${escaparHtml(props.ultima_aplicacion || '')}" onchange="actualizarDato('ultima_aplicacion', this.value)" style="${estilosPopup.input}">`
+    );
+
+    html += `<label style="${estilosPopup.etiquetaPequena}">Tipo de Riego:</label>
+             <select onchange="actualizarDato('tipo_riego', this.value)" style="${estilosPopup.input}">
+                 ${construirOpcionesHTML(opcionesRiego, props.tipo_riego || '')}
+             </select>`;
+
+    html += `<label style="${estilosPopup.etiquetaPequena}">Rendimiento Esperado (TCH):</label>
+             <input type="number" step="0.1" value="${escaparHtml(props.rendimiento_tch || '')}" onchange="actualizarDato('rendimiento_tch', this.value)" style="${estilosPopup.input}">`;
+
+    html += crearFilaDosColumnas(
+        `<label style="${estilosPopup.etiquetaPequena}">Maleza:</label>
+         <select onchange="actualizarDato('nivel_maleza', this.value)" style="${estilosPopup.input}">
+             ${construirOpcionesHTML(opcionesMaleza, props.nivel_maleza || '')}
+         </select>`,
+        `<label style="${estilosPopup.etiquetaPequena}">Humedad:</label>
+         <select onchange="actualizarDato('nivel_humedad', this.value)" style="${estilosPopup.input}">
+             ${construirOpcionesHTML(opcionesHumedad, props.nivel_humedad || '')}
+         </select>`
+    );
+
+    html += `<label style="${estilosPopup.etiquetaPequena}">Estatus Sanitario:</label>
+             <select onchange="actualizarDato('estatus_sanitario', this.value)" style="${estilosPopup.input}">
+                 ${construirOpcionesHTML(opcionesSanidad, props.estatus_sanitario || 'Sano')}
+             </select>`;
+
+    html += `<label style="${estilosPopup.etiquetaPequena}">Tipo de Fertilización:</label>
+             <input type="text" placeholder="Ej. Urea, NPK..." value="${escaparHtml(props.tipo_fertilizacion || '')}" onchange="actualizarDato('tipo_fertilizacion', this.value)" style="${estilosPopup.input}">`;
+
+    html += `<label style="${estilosPopup.etiquetaPequena}">Incidencias / Notas / Historial:</label>
+             <textarea onchange="actualizarDato('incidencias', this.value)" style="${estilosPopup.input} height:60px;">${escaparHtml(props.incidencias || '')}</textarea>`;
+
+    html += `</div></div>`;
     return html;
 }
 
 // --- FUNCIONES INTERNAS DEL GLOBO ---
 function actualizarDato(clave, valor) {
-    if (!capaActualPopup) return;
-    capaActualPopup.feature.properties[clave] = valor;
-    registrarCambio();
-    guardarAutomaticamente(); // FORZAMOS GUARDADO INMEDIATO
-    capaActualPopup.setPopupContent(crearContenidoPopup(capaActualPopup));
+    actualizarPopupActual(function (layer) {
+        layer.feature.properties[clave] = valor;
+    });
 }
 
 function toggleTarea(index, completada) {
-    if (!capaActualPopup) return;
-    capaActualPopup.feature.properties.tareas[index].completada = completada;
-    registrarCambio();
-    guardarAutomaticamente(); // FORZAMOS GUARDADO INMEDIATO
-    capaActualPopup.setPopupContent(crearContenidoPopup(capaActualPopup));
+    actualizarPopupActual(function (layer) {
+        layer.feature.properties.tareas[index].completada = completada;
+    });
 }
 
 function eliminarTarea(index) {
-    if (!capaActualPopup) return;
-    capaActualPopup.feature.properties.tareas.splice(index, 1);
-    registrarCambio();
-    guardarAutomaticamente(); // FORZAMOS GUARDADO INMEDIATO
-    capaActualPopup.setPopupContent(crearContenidoPopup(capaActualPopup));
+    actualizarPopupActual(function (layer) {
+        layer.feature.properties.tareas.splice(index, 1);
+    });
 }
 
 function agregarTarea() {
@@ -168,13 +283,12 @@ function agregarTarea() {
     var input = document.getElementById('inputNuevaTarea');
     if (!input.value.trim()) return;
 
-    capaActualPopup.feature.properties.tareas.push({
-        texto: input.value.trim(),
-        completada: false
+    actualizarPopupActual(function (layer) {
+        layer.feature.properties.tareas.push({
+            texto: input.value.trim(),
+            completada: false
+        });
     });
-    registrarCambio();
-    guardarAutomaticamente(); // FORZAMOS GUARDADO INMEDIATO
-    capaActualPopup.setPopupContent(crearContenidoPopup(capaActualPopup));
 }
 
 // --- EVENTOS DEL MAPA ---
@@ -213,7 +327,7 @@ function actualizarEstado(texto) {
 
 function guardarAutomaticamente() {
     if (!slotId || !cambiosPendientes || guardando) return;
-    if (!puedeAgregar && !puedeEditar) return;
+    if (!tienePermisoDeGuardado()) return;
 
     guardando = true;
     actualizarEstado('Guardando...');
@@ -240,7 +354,7 @@ function guardarAutomaticamente() {
 
 function guardarManual() {
     if (!slotId || guardando) return;
-    if (!puedeAgregar && !puedeEditar) return;
+    if (!tienePermisoDeGuardado()) return;
 
     cambiosPendientes = true;
     guardarAutomaticamente();

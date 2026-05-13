@@ -85,3 +85,16 @@ def admin_cambiar_password(user_id):
             db.cambiar_password_usuario(user_id, nueva_pass)
             db.registrar_log(session.get('usuario'), "Cambio Password", f"Usuario ID: {user_id}")
     return redirect(url_for('dashboard.index'))
+
+@dashboard_bp.route('/admin/toggle_grupo/<grupo>/<int:user_id>', methods=['POST'])
+def toggle_grupo(grupo, user_id):
+    if session.get('rol') == 'admin':
+        if grupo == 'lotes':
+            db.alternar_permiso(user_id, 'puede_agregar')
+            db.alternar_permiso(user_id, 'puede_editar')
+        elif grupo == 'tareas':
+            db.alternar_permiso(user_id, 'puede_agregar_tareas')
+            db.alternar_permiso(user_id, 'puede_marcar_tareas')
+        elif grupo == 'costos':
+            db.alternar_permiso(user_id, 'puede_ver_costos')
+    return redirect(url_for('dashboard.index'))

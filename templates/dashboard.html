@@ -9,21 +9,14 @@
 
 <body>
     <!-- Overlay de Spinner -->
-    <div id="spinnerCarga" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.9); z-index: 9999; justify-content: center; align-items: center; flex-direction: column;">
-        <div style="border: 5px solid #f3f3f3; border-top: 5px solid #007bff; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite;"></div>
-        <p style="margin-top: 15px; font-weight: bold; font-family: sans-serif; color: #333; font-size: 16px;">Cargando KML, por favor espera...</p>
-        <style>
-            @keyframes spin { 
-                0% { transform: rotate(0deg); } 
-                100% { transform: rotate(360deg); } 
-            }
-        </style>
+    <div id="spinnerCarga" class="spinner-overlay">
+        <div class="spinner-ring"></div>
+        <p class="spinner-text">Cargando KML, por favor espera...</p>
     </div>
 
     <h1>Selecciona un Slot de Trabajo</h1>
-    <div style="text-align: center; margin-bottom: 20px;">
-        <a href="/logout" class="btn" style="background-color: #6c757d; width: auto; padding: 5px 15px;">Cerrar
-            Sesión</a>
+    <div class="page-actions">
+        <a href="/logout" class="btn btn-secondary btn-auto">Cerrar Sesión</a>
     </div>
 
     <div class="slots-container">
@@ -48,14 +41,14 @@
             </div>
             {% else %}
             <!-- Slot Libre: NO mostramos el botón de eliminar -->
-            <p style="color: #888; font-style: italic">Slot Vacío</p>
+            <p class="slot-empty">Slot Vacío</p>
 
             <!-- Formulario con botón oculto. El "label" funciona como botón visual -->
             <form action="/cargar_kml/{{ slot[0] }}" method="POST" enctype="multipart/form-data">
-                <label for="upload-{{ slot[0] }}" class="btn btn-empty" style="cursor: pointer; display: block">
+                <label for="upload-{{ slot[0] }}" class="btn btn-empty">
                     Cargar Nuevo KML
                 </label>
-                <input id="upload-{{ slot[0] }}" type="file" name="kml_file" accept=".kml" style="display: none"
+                <input id="upload-{{ slot[0] }}" type="file" name="kml_file" accept=".kml" hidden
                     onchange="mostrarSpinnerYEnviar(this)" />
             </form>
 
@@ -69,136 +62,77 @@
 
     <!-- SECCIÓN EXCLUSIVA PARA EL ADMINISTRADOR -->
     {% if rol_actual == 'admin' %}
-    <hr style="margin: 40px 0; border: 1px solid #ddd" />
+    <hr class="section-divider" />
 
-    <div style="
-        background: white;
-        padding: 20px;
-        border-radius: 8px;
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-        margin-top: 20px;
-      ">
+    <div class="panel-card">
         <h2>Panel de Administración de Usuarios</h2>
 
         <!-- Formulario para crear usuarios -->
-        <form action="/admin/crear_usuario" method="POST" style="margin-bottom: 20px; display: flex; gap: 10px">
-            <input type="text" name="nuevo_usuario" placeholder="Nombre de usuario" required
-                style="padding: 10px; border: 1px solid #ccc; border-radius: 4px" />
-            <input type="password" name="nueva_password" placeholder="Contraseña" required
-                style="padding: 10px; border: 1px solid #ccc; border-radius: 4px" />
-            <button type="submit" class="btn" style="width: auto; margin: 0; background-color: #28a745">
+        <form action="/admin/crear_usuario" method="POST" class="inline-form">
+            <input type="text" name="nuevo_usuario" placeholder="Nombre de usuario" required class="field-input" />
+            <input type="password" name="nueva_password" placeholder="Contraseña" required class="field-input" />
+            <button type="submit" class="btn btn-success btn-auto">
                 + Crear Usuario
             </button>
         </form>
 
         <!-- Tabla de Usuarios -->
-        <table style="width: 100%; border-collapse: collapse; text-align: left">
+        <table class="admin-table">
             <thead>
-                <tr style="background-color: #f8f9fa; border-bottom: 2px solid #dee2e6">
-                    <th style="padding: 10px">Usuario</th>
-                    <th style="padding: 10px">Rol</th>
-                    <th style="padding: 10px">Última Conexión</th>
-                    <th style="padding: 10px">Puede Crear Lotes</th>
-                    <th style="padding: 10px">Puede Editar/Borrar Polígonos</th>
-                    <th style="padding: 10px">Acciones</th>
-                    <th style="padding: 10px">Puede Crear Tareas</th>
-                    <th style="padding: 10px">Puede Marcar Tareas</th>
+                <tr>
+                    <th>Usuario</th>
+                    <th>Rol</th>
+                    <th class="text-center">Gestión de Lotes</th>
+                    <th class="text-center">Gestión de Tareas</th>
+                    <th class="text-center">Control de Costos</th>
+                    <th class="text-right">Acciones</th>
                 </tr>
             </thead>
             <tbody>
                 {% for u in usuarios %}
-                <tr style="border-bottom: 1px solid #eee">
-                    <td style="padding: 10px; font-weight: bold">{{ u[1] }}</td>
-                    <td style="padding: 10px">{{ u[2] }}</td>
-                    <td style="padding: 10px; color: #666">
-                        {{ u[4] if u[4] else 'Nunca' }}
+                <tr>
+                    <td class="admin-user">{{ u[1] }}</td>
+                    <td class="admin-role">{{ u[2] }}</td>
+
+                    {% if u[2] != 'admin' %}
+                    <td class="permission-cell">
+                        <input type="checkbox" {{ 'checked' if u[3]==1 }}
+                            onclick="document.getElementById('toggle-lotes-{{ u[0] }}').submit()"
+                            class="permission-toggle">
+                        <form id="toggle-lotes-{{ u[0] }}" action="/admin/toggle_grupo/lotes/{{ u[0] }}" method="POST"
+                            class="hidden-form"></form>
                     </td>
 
-                    <!-- Botón para alternar permiso Crear Lotes -->
-                    <td style="padding: 10px">
-                        {% if u[2] != 'admin' %}
-                        <form action="/admin/toggle_permiso/{{ u[0] }}" method="POST" style="display: inline">
-                            {% if u[3] == 1 %}
-                            <button type="submit" class="btn" style="background: #28a745; margin: 0; padding: 5px 10px">
-                                Sí (Quitar)
-                            </button>
-                            {% else %}
-                            <button type="submit" class="btn" style="background: #dc3545; margin: 0; padding: 5px 10px">
-                                No (Otorgar)
-                            </button>
-                            {% endif %}
-                        </form>
-                        {% else %}
-                        <span style="color: #28a745; font-weight: bold">Siempre (Admin)</span>
-                        {% endif %}
+                    <td class="permission-cell">
+                        <input type="checkbox" {{ 'checked' if u[6]==1 }}
+                            onclick="document.getElementById('toggle-tareas-{{ u[0] }}').submit()"
+                            class="permission-toggle">
+                        <form id="toggle-tareas-{{ u[0] }}" action="/admin/toggle_grupo/tareas/{{ u[0] }}" method="POST"
+                            class="hidden-form"></form>
                     </td>
 
-                    <!-- Botón para alternar permiso de Edición -->
-                    <td style="padding: 10px">
-                        {% if u[2] != 'admin' %}
-                        <form action="/admin/toggle_edicion/{{ u[0] }}" method="POST" style="display: inline">
-                            {% if u[5] == 1 %}
-                            <button type="submit" class="btn" style="background: #28a745; margin: 0; padding: 5px 10px">
-                                Sí (Quitar)
-                            </button>
-                            {% else %}
-                            <button type="submit" class="btn" style="background: #dc3545; margin: 0; padding: 5px 10px">
-                                No (Otorgar)
-                            </button>
-                            {% endif %}
-                        </form>
-                        {% else %}
-                        <span style="color: #28a745; font-weight: bold">Siempre (Admin)</span>
-                        {% endif %}
+                    <td class="permission-cell">
+                        <input type="checkbox" {{ 'checked' if u[8]==1 }}
+                            onclick="document.getElementById('toggle-costos-{{ u[0] }}').submit()"
+                            class="permission-toggle">
+                        <form id="toggle-costos-{{ u[0] }}" action="/admin/toggle_grupo/costos/{{ u[0] }}"
+                            method="POST" class="hidden-form"></form>
                     </td>
+                    {% else %}
+                    <td colspan="3" class="admin-total">CONTROL TOTAL (ADMIN)</td>
+                    {% endif %}
 
-                    <td style="padding: 10px">
-                        {% if u[2] != 'admin' %}
-                        <form action="/admin/toggle_agregar_tareas/{{ u[0] }}" method="POST" style="display: inline">
-                            {% if u[6] == 1 %}
-                            <button type="submit" class="btn"
-                                style="background: #28a745; margin: 0; padding: 5px 10px">Sí (Quitar)</button>
-                            {% else %}
-                            <button type="submit" class="btn"
-                                style="background: #dc3545; margin: 0; padding: 5px 10px">No (Otorgar)</button>
-                            {% endif %}
-                        </form>
-                        {% else %}
-                        <span style="color: #28a745; font-weight: bold">Siempre (Admin)</span>
-                        {% endif %}
-                    </td>
-
-                    <!-- Botón para alternar permiso Marcar Tareas -->
-                    <td style="padding: 10px">
-                        {% if u[2] != 'admin' %}
-                        <form action="/admin/toggle_marcar_tareas/{{ u[0] }}" method="POST" style="display: inline">
-                            {% if u[7] == 1 %}
-                            <button type="submit" class="btn"
-                                style="background: #28a745; margin: 0; padding: 5px 10px">Sí (Quitar)</button>
-                            {% else %}
-                            <button type="submit" class="btn"
-                                style="background: #dc3545; margin: 0; padding: 5px 10px">No (Otorgar)</button>
-                            {% endif %}
-                        </form>
-                        {% else %}
-                        <span style="color: #28a745; font-weight: bold">Siempre (Admin)</span>
-                        {% endif %}
-                    </td>
-
-                    <!-- Acciones: Cambiar Clave y Eliminar -->
-                    <td style="padding: 10px">
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <button type="button" onclick="abrirModalPass('{{ u[0] }}', '{{ u[1] }}')" class="btn"
-                                style="background: #ffc107; color: black; margin: 0; padding: 5px 10px; width: 110px; height: 40px; white-space: nowrap;">
-                                Cambiar Clave
+                    <td class="text-right">
+                        <div class="table-actions">
+                            <button type="button" onclick="abrirModalPass('{{ u[0] }}', '{{ u[1] }}')" class="btn btn-warning btn-small">
+                                Clave
                             </button>
-
                             {% if u[2] != 'admin' %}
-                            <form action="/admin/eliminar_usuario/{{ u[0] }}" method="POST" style="margin: 0;"
-                                onsubmit="return confirm('¿Seguro que deseas eliminar este usuario?');">
-                                <button type="submit" class="btn btn-delete"
-                                    style="margin: 0; padding: 5px 10px; width: 110px; height: 40px; white-space: nowrap;">
-                                    Eliminar
+                            <form action="/admin/eliminar_usuario/{{ u[0] }}" method="POST"
+                                onsubmit="return confirm('¿Seguro que deseas eliminar a este usuario?');"
+                                class="slot-actions">
+                                <button type="submit" class="btn btn-delete btn-small">
+                                    Borrar
                                 </button>
                             </form>
                             {% endif %}
@@ -212,50 +146,23 @@
     {% endif %}
 
     <!-- Modal de confirmación para eliminar KML -->
-    <div id="modalEliminar" style="
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.6);
-        justify-content: center;
-        align-items: center;
-        z-index: 1000;
-      ">
-        <div style="
-          background: white;
-          padding: 25px;
-          border-radius: 8px;
-          width: 320px;
-          text-align: center;
-          box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-        ">
-            <h3 style="margin-top: 0; color: #333">
+    <div id="modalEliminar" class="modal-overlay">
+        <div class="modal-card">
+            <h3 class="modal-title">
                 ¿Seguro que quieres borrar esta partida?
             </h3>
-            <p style="font-size: 14px; color: #666">
+            <p class="modal-text">
                 Ingresa tu contraseña para confirmar:
             </p>
 
-            <form id="formEliminar" method="POST" action>
-                <!-- Input type="password" censura el texto -->
-                <input type="password" name="password" placeholder="Tu contraseña" required style="
-              width: 100%;
-              padding: 10px;
-              margin-bottom: 20px;
-              border: 1px solid #ccc;
-              border-radius: 4px;
-              box-sizing: border-box;
-            " />
+            <form id="formEliminar" method="POST" action="">
+                <input type="password" name="password" placeholder="Tu contraseña" required class="modal-input" />
 
-                <div style="display: flex; justify-content: space-between">
-                    <button type="button" onclick="cerrarModal()" class="btn"
-                        style="background: #6c757d; width: 48%; margin: 0">
+                <div class="modal-actions">
+                    <button type="button" onclick="cerrarModal()" class="btn btn-secondary btn-auto">
                         Cancelar
                     </button>
-                    <button type="submit" class="btn btn-delete" style="width: 48%; margin: 0">
+                    <button type="submit" class="btn btn-delete btn-auto">
                         Confirmar Borrado
                     </button>
                 </div>
@@ -263,39 +170,32 @@
         </div>
     </div>
     <!-- Modal para Cambiar Contraseña -->
-    <div id="modalPass"
-        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); justify-content: center; align-items: center; z-index: 1000;">
-        <div
-            style="background: white; padding: 25px; border-radius: 8px; width: 320px; text-align: center; box-shadow: 0 5px 15px rgba(0,0,0,0.3);">
-            <h3 style="margin-top: 0; color: #333;">Restablecer
-                Clave</h3>
-            <p style="font-size: 14px; color: #666;">Nueva clave para
+    <div id="modalPass" class="modal-overlay">
+        <div class="modal-card">
+            <h3 class="modal-title">Restablecer Clave</h3>
+            <p class="modal-text">Nueva clave para
                 <strong id="nombreUsuarioPass"></strong>:
             </p>
 
-            <form id="formCambiarPass" method="POST" action>
-                <!-- Usamos type="text" para que el admin vea lo que escribe al resetear -->
+            <form id="formCambiarPass" method="POST" action="">
                 <input type="text" name="nueva_password" placeholder="Escribe la nueva contraseña" required
-                    style="width: 100%; padding: 10px; margin-bottom: 20px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+                    class="modal-input">
 
-                <div style="display: flex; justify-content: space-between;">
-                    <button type="button" onclick="cerrarModalPass()" class="btn"
-                        style="background: #6c757d; width: 48%; margin: 0;">Cancelar</button>
-                    <button type="submit" class="btn"
-                        style="background: #ffc107; color: black; width: 48%; margin: 0;">Actualizar</button>
+                <div class="modal-actions">
+                    <button type="button" onclick="cerrarModalPass()" class="btn btn-secondary btn-auto">Cancelar</button>
+                    <button type="submit" class="btn btn-warning btn-auto">Actualizar</button>
                 </div>
             </form>
         </div>
     </div>
 
-    </div>
     {% if rol_actual == 'admin' %}
-    <div style="margin-top: 20px; padding: 15px; background: #e9ecef; border-radius: 8px;">
+    <div class="report-panel">
         <h3>Generar Reportes de Actividad</h3>
-        <div style="display: flex; gap: 10px;">
-            <a href="/admin/reporte/dia" class="btn" style="background: #17a2b8; width: auto;">Hoy</a>
-            <a href="/admin/reporte/semana" class="btn" style="background: #17a2b8; width: auto;">Esta Semana</a>
-            <a href="/admin/reporte/mes" class="btn" style="background: #17a2b8; width: auto;">Este Mes</a>
+        <div class="report-actions">
+            <a href="/admin/reporte/dia" class="btn btn-info btn-auto">Hoy</a>
+            <a href="/admin/reporte/semana" class="btn btn-info btn-auto">Esta Semana</a>
+            <a href="/admin/reporte/mes" class="btn btn-info btn-auto">Este Mes</a>
         </div>
     </div>
     {% endif %}

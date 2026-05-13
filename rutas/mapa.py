@@ -8,6 +8,20 @@ import json
 
 mapa_bp = Blueprint('mapa', __name__)
 
+
+def _puede_guardar_mapa(rol, *permisos):
+    return rol == 'admin' or any(bool(permiso) for permiso in permisos)
+
+
+def _armar_permisos_mapa(rol, db_agregar, db_editar, db_agregar_tar, db_marcar_tar, db_costos):
+    return {
+        "puede_agregar": rol == 'admin' or bool(db_agregar),
+        "puede_editar": rol == 'admin' or bool(db_editar),
+        "puede_agregar_tareas": rol == 'admin' or bool(db_agregar_tar),
+        "puede_marcar_tareas": rol == 'admin' or bool(db_marcar_tar),
+        "puede_ver_costos": rol == 'admin' or bool(db_costos),
+    }
+
 @mapa_bp.route('/adhesa/<slug>')
 def visor(slug):
     if not session.get('logeado'): 
@@ -25,19 +39,18 @@ def visor(slug):
     
     db.actualizar_metadatos_slot(slot_id, usuario, datetime.now().strftime("%Y-%m-%d %H:%M"))
     
-    rol, db_add, db_edit, db_tar, db_check = db.obtener_permisos_usuario(usuario)
+    rol, db_add, db_edit, db_tar, db_check, db_costos = db.obtener_permisos_usuario(usuario)
+
+    permisos = _armar_permisos_mapa(rol, db_add, db_edit, db_tar, db_check, db_costos)
 
     return render_template('mapa.html', 
                            slot_id=slot_id, 
                            nombre_mapa=nombre_real, 
                            kml_data=kml_contenido,
-                           puede_agregar=(rol == 'admin' or bool(db_add)),
-                           puede_editar=(rol == 'admin' or bool(db_edit)),
-                           puede_agregar_tareas=(rol == 'admin' or bool(db_tar)),
-                           puede_marcar_tareas=(rol == 'admin' or bool(db_check)),
                            usuario_actual=usuario,
                            es_admin=(rol == 'admin'),
-                           usuarios_lista_json=json.dumps([u[1] for u in db.obtener_todos_los_usuarios()]))
+                           usuarios_lista_json=json.dumps([u[1] for u in db.obtener_todos_los_usuarios()]),
+                           **permisos)
 
 @mapa_bp.route('/api/guardar_kml/<int:slot_id>', methods=['POST'])
 def guardar(slot_id):
@@ -45,9 +58,9 @@ def guardar(slot_id):
         return {"ok": False, "error": "Acceso denegado"}, 401
 
     usuario = session.get('usuario')
-    rol, db_agregar, db_editar, db_agregar_tar, db_marcar_tar = db.obtener_permisos_usuario(usuario)
+    rol, db_agregar, db_editar, db_agregar_tar, db_marcar_tar, db_costos = db.obtener_permisos_usuario(usuario)
 
-    puede_guardar = (rol == 'admin') or bool(db_agregar) or bool(db_editar) or bool(db_agregar_tar) or bool(db_marcar_tar)
+    puede_guardar = _puede_guardar_mapa(rol, db_agregar, db_editar, db_agregar_tar, db_marcar_tar, db_costos)
     
     if not puede_guardar:
         return {"ok": False, "error": "Sin permisos"}, 403
@@ -98,14 +111,11 @@ def mis_permisos():
         return {"logeado": False}
         
     usuario = session.get('usuario')
-    rol, db_agregar, db_editar, db_agregar_tar, db_marcar_tar = db.obtener_permisos_usuario(usuario)
+    rol, db_agregar, db_editar, db_agregar_tar, db_marcar_tar, db_costos = db.obtener_permisos_usuario(usuario)
     
     return {
         "logeado": True,
-        "puede_agregar": (rol == 'admin') or bool(db_agregar),
-        "puede_editar": (rol == 'admin') or bool(db_editar),
-        "puede_agregar_tareas": (rol == 'admin') or bool(db_agregar_tar),
-        "puede_marcar_tareas": (rol == 'admin') or bool(db_marcar_tar)
+        **_armar_permisos_mapa(rol, db_agregar, db_editar, db_agregar_tar, db_marcar_tar, db_costos)
     }
 
 @mapa_bp.route('/api/reporte_mapa/<int:slot_id>', methods=['POST'])

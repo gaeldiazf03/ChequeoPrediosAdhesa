@@ -9,7 +9,7 @@ def index():
         username = request.form['username']
         password = request.form['password']
         
-        valido, rol, add, edit, add_t, check_t = db.verificar_usuario_y_obtener_datos(username, password)
+        valido, rol, add, edit, add_t, check_t, ver_costos = db.verificar_usuario_y_obtener_datos(username, password)
         
         if valido:
             db.actualizar_ultima_conexion(username)
@@ -17,7 +17,8 @@ def index():
             session.update({
                 'logeado': True, 'usuario': username, 'rol': rol,
                 'puede_agregar': add, 'puede_editar': edit,
-                'puede_agregar_tareas': add_t, 'puede_marcar_tareas': check_t
+                'puede_agregar_tareas': add_t, 'puede_marcar_tareas': check_t,
+                'puede_ver_costos': ver_costos
             })
             return redirect(url_for('dashboard.index'))
         return render_template('login.html', error='Credenciales incorrectas')

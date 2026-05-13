@@ -41,7 +41,8 @@ class DatabaseManager:
             nuevas_columnas = {
                 'puede_editar': 'INTEGER DEFAULT 0',
                 'puede_agregar_tareas': 'INTEGER DEFAULT 0',
-                'puede_marcar_tareas': 'INTEGER DEFAULT 0'
+                'puede_marcar_tareas': 'INTEGER DEFAULT 0',
+                'puede_ver_costos': 'INTEGER DEFAULT 0'
             }
             
             for col, tipo in nuevas_columnas.items():
@@ -63,42 +64,55 @@ class DatabaseManager:
                              VALUES (?, ?, ?, ?, ?, ?, ?)''', ('admin', pass_encriptada, 'admin', 1, 1, 1, 1))
 
             # Asegurar que el admin siempre tenga todo al iniciar
-            c.execute('UPDATE usuarios SET puede_agregar=1, puede_editar=1, puede_agregar_tareas=1, puede_marcar_tareas=1 WHERE rol="admin"')
+            c.execute('UPDATE usuarios SET puede_agregar=1, puede_editar=1, puede_agregar_tareas=1, puede_marcar_tareas=1, puede_ver_costos=1 WHERE rol="admin"')
             conn.commit()
 
     # --- MÉTODOS DE USUARIOS ---
 
-    def verificar_usuario(self, username, password_ingresada):
-        """Versión simple que solo valida si la contraseña es correcta."""
-        with self._get_connection() as conn:
-            c = conn.cursor()
-            c.execute('SELECT password_hash FROM usuarios WHERE username = ?', (username,))
-            resultado = c.fetchone()
-            if resultado and check_password_hash(resultado[0], password_ingresada):
-                return True
-        return False
-
     def verificar_usuario_y_obtener_datos(self, username, password):
         with self._get_connection() as conn:
             c = conn.cursor()
-            c.execute('SELECT password_hash, rol, puede_agregar, puede_editar, puede_agregar_tareas, puede_marcar_tareas FROM usuarios WHERE username = ?', (username,))
+            c.execute('SELECT password_hash, rol, puede_agregar, puede_editar, puede_agregar_tareas, puede_marcar_tareas, puede_ver_costos FROM usuarios WHERE username = ?', (username,))
             res = c.fetchone()
             if res and check_password_hash(res[0], password):
-                return True, res[1], res[2], res[3], res[4], res[5]
-        return False, None, None, None, None, None
+                return True, res[1], res[2], res[3], res[4], res[5], res[6] # <-- Añadimos res[6]
+        return False, None, None, None, None, None, None
 
     def obtener_permisos_usuario(self, username):
         with self._get_connection() as conn:
             c = conn.cursor()
-            c.execute('SELECT rol, puede_agregar, puede_editar, puede_agregar_tareas, puede_marcar_tareas FROM usuarios WHERE username = ?', (username,))
+            c.execute('SELECT rol, puede_agregar, puede_editar, puede_agregar_tareas, puede_marcar_tareas, puede_ver_costos FROM usuarios WHERE username = ?', (username,))
             res = c.fetchone()
-            return res if res else ('user', 0, 0, 0, 0)
+            return res if res else ('user', 0, 0, 0, 0, 0) # <-- Añadimos un 0 extra
 
     def obtener_todos_los_usuarios(self):
         with self._get_connection() as conn:
             c = conn.cursor()
-            c.execute('SELECT id, username, rol, puede_agregar, ultima_conexion, puede_editar, puede_agregar_tareas, puede_marcar_tareas FROM usuarios')
+            # Añadimos puede_ver_costos al final. Ahora será el índice u[8] en tu HTML
+            c.execute('SELECT id, username, rol, puede_agregar, ultima_conexion, puede_editar, puede_agregar_tareas, puede_marcar_tareas, puede_ver_costos FROM usuarios')
             return c.fetchall()
+
+    def alternar_permiso(self, user_id, columna):
+        # Añadimos el nuevo permiso a la lista de columnas permitidas
+        validas = ['puede_agregar', 'puede_editar', 'puede_agregar_tareas', 'puede_marcar_tareas', 'puede_ver_costos']
+        if columna not in validas: return
+
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute(f'UPDATE usuarios SET {columna} = CASE WHEN {columna} = 1 THEN 0 ELSE 1 END WHERE id = ? AND rol != "admin"', (user_id,))
+            conn.commit()
+
+    def crear_nuevo_usuario(self, username, password):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            try:
+                pass_hash = generate_password_hash(password)
+                # Añadimos puede_ver_costos
+                c.execute('INSERT INTO usuarios (username, password_hash, rol, puede_agregar, puede_editar, puede_agregar_tareas, puede_marcar_tareas, puede_ver_costos) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', 
+                          (username, pass_hash, 'user', 1, 0, 0, 0, 0))
+                conn.commit()
+            except sqlite3.IntegrityError:
+                pass
 
     def actualizar_ultima_conexion(self, username):
         with self._get_connection() as conn:
@@ -106,30 +120,6 @@ class DatabaseManager:
             fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
             c.execute('UPDATE usuarios SET ultima_conexion = ? WHERE username = ?', (fecha, username))
             conn.commit()
-
-    def alternar_permiso(self, user_id, columna):
-        """Método genérico para cambiar permisos (lotes, edición, tareas, etc.)"""
-        validas = ['puede_agregar', 'puede_editar', 'puede_agregar_tareas', 'puede_marcar_tareas']
-        if columna not in validas: return
-        
-        with self._get_connection() as conn:
-            c = conn.cursor()
-            c.execute(f'UPDATE usuarios SET {columna} = CASE WHEN {columna} = 1 THEN 0 ELSE 1 END WHERE id = ? AND rol != "admin"', (user_id,))
-            conn.commit()
-
-    # --- WRAPPERS DE COMPATIBILIDAD (Para no romper el frontend/rutas) ---
-    
-    def alternar_permiso_lotes(self, user_id):
-        self.alternar_permiso(user_id, 'puede_agregar')
-
-    def alternar_permiso_edicion(self, user_id):
-        self.alternar_permiso(user_id, 'puede_editar')
-
-    def alternar_permiso_agregar_tareas(self, user_id):
-        self.alternar_permiso(user_id, 'puede_agregar_tareas')
-
-    def alternar_permiso_marcar_tareas(self, user_id):
-        self.alternar_permiso(user_id, 'puede_marcar_tareas')
 
     # --- MÉTODOS DE SLOTS Y MAPA ---
 
@@ -175,16 +165,6 @@ class DatabaseManager:
 
     # --- MÉTODOS DE ADMINISTRACIÓN DE USUARIOS ---
 
-    def crear_nuevo_usuario(self, username, password):
-        with self._get_connection() as conn:
-            c = conn.cursor()
-            try:
-                pass_hash = generate_password_hash(password)
-                c.execute('INSERT INTO usuarios (username, password_hash, rol, puede_agregar, puede_editar, puede_agregar_tareas, puede_marcar_tareas) VALUES (?, ?, ?, ?, ?, ?, ?)', 
-                          (username, pass_hash, 'user', 1, 0, 0, 0))
-                conn.commit()
-            except sqlite3.IntegrityError:
-                pass # El usuario ya existe
 
     def eliminar_usuario(self, user_id):
         with self._get_connection() as conn:
