@@ -8,7 +8,6 @@
 </head>
 
 <body>
-    <!-- Overlay de Spinner -->
     <div id="spinnerCarga" class="spinner-overlay">
         <div class="spinner-ring"></div>
         <p class="spinner-text">Cargando KML, por favor espera...</p>
@@ -20,34 +19,23 @@
     </div>
 
     <div class="slots-container">
-        <!-- Bucle de Jinja2 para iterar sobre los 3 slots de la base de datos -->
         {% for slot in slots %}
         <div class="slot">
             <h3>Slot {{ slot[0] }}</h3>
 
-            <!-- IMPORTANTE: Evaluamos slot[3] porque ahí vive kml_data ahora -->
             {% if slot[3] %}
-            <!-- Slot Ocupado: Solo mostramos botones de abrir y eliminar -->
-            <a href="/adhesa/{{ slot[2] }}" class="btn">Abrir {{ slot[1]
-                }}</a>
-            <button onclick="abrirModal('{{ slot[0] }}')" class="btn btn-delete">
-                Eliminar KML
-            </button>
+            <a href="/adhesa/{{ slot[2] }}" class="btn">Abrir {{ slot[1] }}</a>
+            <button onclick="abrirModal('{{ slot[0] }}')" class="btn btn-delete">Eliminar KML</button>
 
             <div class="metadata">
                 <p><strong>Creado:</strong> {{ slot[4] }}</p>
-                <p><strong>Última vista:</strong> {{ slot[5] }} ({{ slot[6]
-                    }})</p>
+                <p><strong>Última vista:</strong> {{ slot[5] }} ({{ slot[6] }})</p>
             </div>
             {% else %}
-            <!-- Slot Libre: NO mostramos el botón de eliminar -->
             <p class="slot-empty">Slot Vacío</p>
 
-            <!-- Formulario con botón oculto. El "label" funciona como botón visual -->
             <form action="/cargar_kml/{{ slot[0] }}" method="POST" enctype="multipart/form-data">
-                <label for="upload-{{ slot[0] }}" class="btn btn-empty">
-                    Cargar Nuevo KML
-                </label>
+                <label for="upload-{{ slot[0] }}" class="btn btn-empty">Cargar Nuevo KML</label>
                 <input id="upload-{{ slot[0] }}" type="file" name="kml_file" accept=".kml" hidden
                     onchange="mostrarSpinnerYEnviar(this)" />
             </form>
@@ -60,23 +48,20 @@
         {% endfor %}
     </div>
 
-    <!-- SECCIÓN EXCLUSIVA PARA EL ADMINISTRADOR -->
     {% if rol_actual == 'admin' %}
     <hr class="section-divider" />
 
     <div class="panel-card">
         <h2>Panel de Administración de Usuarios</h2>
+        <p class="panel-help">Activa los permisos de descarga para decidir quién puede bajar CSV de avances o logs.</p>
 
-        <!-- Formulario para crear usuarios -->
         <form action="/admin/crear_usuario" method="POST" class="inline-form">
             <input type="text" name="nuevo_usuario" placeholder="Nombre de usuario" required class="field-input" />
             <input type="password" name="nueva_password" placeholder="Contraseña" required class="field-input" />
-            <button type="submit" class="btn btn-success btn-auto">
-                + Crear Usuario
-            </button>
+            <button type="submit" class="btn btn-success btn-auto">+ Crear Usuario</button>
         </form>
 
-        <!-- Tabla de Usuarios -->
+        <div class="admin-table-container">
         <table class="admin-table">
             <thead>
                 <tr>
@@ -85,6 +70,8 @@
                     <th class="text-center">Gestión de Lotes</th>
                     <th class="text-center">Gestión de Tareas</th>
                     <th class="text-center">Control de Costos</th>
+                    <th class="text-center">Descargar CSV (Mapa)</th>
+                    <th class="text-center">Descargar CSV (Logs)</th>
                     <th class="text-right">Acciones</th>
                 </tr>
             </thead>
@@ -118,22 +105,35 @@
                         <form id="toggle-costos-{{ u[0] }}" action="/admin/toggle_grupo/costos/{{ u[0] }}"
                             method="POST" class="hidden-form"></form>
                     </td>
+
+                    <td class="permission-cell">
+                        <input type="checkbox" {{ 'checked' if u[9]==1 }}
+                            onclick="document.getElementById('toggle-descargas-mapa-{{ u[0] }}').submit()"
+                            class="permission-toggle">
+                        <form id="toggle-descargas-mapa-{{ u[0] }}" action="/admin/toggle_descargar_mapa/{{ u[0] }}"
+                            method="POST" class="hidden-form"></form>
+                    </td>
+
+                    <td class="permission-cell">
+                        <input type="checkbox" {{ 'checked' if u[10]==1 }}
+                            onclick="document.getElementById('toggle-descargas-logs-{{ u[0] }}').submit()"
+                            class="permission-toggle">
+                        <form id="toggle-descargas-logs-{{ u[0] }}" action="/admin/toggle_descargar_logs/{{ u[0] }}"
+                            method="POST" class="hidden-form"></form>
+                    </td>
                     {% else %}
-                    <td colspan="3" class="admin-total">CONTROL TOTAL (ADMIN)</td>
+                    <td colspan="5" class="admin-total">CONTROL TOTAL (ADMIN)</td>
                     {% endif %}
 
                     <td class="text-right">
                         <div class="table-actions">
-                            <button type="button" onclick="abrirModalPass('{{ u[0] }}', '{{ u[1] }}')" class="btn btn-warning btn-small">
-                                Clave
-                            </button>
+                            <button type="button" onclick="abrirModalPass('{{ u[0] }}', '{{ u[1] }}')"
+                                class="btn btn-warning btn-small">Clave</button>
                             {% if u[2] != 'admin' %}
                             <form action="/admin/eliminar_usuario/{{ u[0] }}" method="POST"
                                 onsubmit="return confirm('¿Seguro que deseas eliminar a este usuario?');"
                                 class="slot-actions">
-                                <button type="submit" class="btn btn-delete btn-small">
-                                    Borrar
-                                </button>
+                                <button type="submit" class="btn btn-delete btn-small">Borrar</button>
                             </form>
                             {% endif %}
                         </div>
@@ -142,47 +142,38 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
     </div>
     {% endif %}
 
-    <!-- Modal de confirmación para eliminar KML -->
     <div id="modalEliminar" class="modal-overlay">
         <div class="modal-card">
-            <h3 class="modal-title">
-                ¿Seguro que quieres borrar esta partida?
-            </h3>
-            <p class="modal-text">
-                Ingresa tu contraseña para confirmar:
-            </p>
+            <h3 class="modal-title">¿Seguro que quieres borrar esta partida?</h3>
+            <p class="modal-text">Ingresa tu contraseña para confirmar:</p>
 
             <form id="formEliminar" method="POST" action="">
                 <input type="password" name="password" placeholder="Tu contraseña" required class="modal-input" />
 
                 <div class="modal-actions">
-                    <button type="button" onclick="cerrarModal()" class="btn btn-secondary btn-auto">
-                        Cancelar
-                    </button>
-                    <button type="submit" class="btn btn-delete btn-auto">
-                        Confirmar Borrado
-                    </button>
+                    <button type="button" onclick="cerrarModal()" class="btn btn-secondary btn-auto">Cancelar</button>
+                    <button type="submit" class="btn btn-delete btn-auto">Confirmar Borrado</button>
                 </div>
             </form>
         </div>
     </div>
-    <!-- Modal para Cambiar Contraseña -->
+
     <div id="modalPass" class="modal-overlay">
         <div class="modal-card">
             <h3 class="modal-title">Restablecer Clave</h3>
-            <p class="modal-text">Nueva clave para
-                <strong id="nombreUsuarioPass"></strong>:
-            </p>
+            <p class="modal-text">Nueva clave para <strong id="nombreUsuarioPass"></strong>:</p>
 
             <form id="formCambiarPass" method="POST" action="">
                 <input type="text" name="nueva_password" placeholder="Escribe la nueva contraseña" required
                     class="modal-input">
 
                 <div class="modal-actions">
-                    <button type="button" onclick="cerrarModalPass()" class="btn btn-secondary btn-auto">Cancelar</button>
+                    <button type="button" onclick="cerrarModalPass()"
+                        class="btn btn-secondary btn-auto">Cancelar</button>
                     <button type="submit" class="btn btn-warning btn-auto">Actualizar</button>
                 </div>
             </form>
@@ -192,6 +183,7 @@
     {% if rol_actual == 'admin' %}
     <div class="report-panel">
         <h3>Generar Reportes de Actividad</h3>
+        <p class="panel-help">Solo los usuarios con permiso pueden descargar CSV; aquí puedes alternar el acceso por usuario.</p>
         <div class="report-actions">
             <a href="/admin/reporte/dia" class="btn btn-info btn-auto">Hoy</a>
             <a href="/admin/reporte/semana" class="btn btn-info btn-auto">Esta Semana</a>
@@ -201,7 +193,6 @@
     {% endif %}
 
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
-
 </body>
 
 </html>

@@ -20,6 +20,8 @@ def _armar_permisos_mapa(rol, db_agregar, db_editar, db_agregar_tar, db_marcar_t
         "puede_agregar_tareas": rol == 'admin' or bool(db_agregar_tar),
         "puede_marcar_tareas": rol == 'admin' or bool(db_marcar_tar),
         "puede_ver_costos": rol == 'admin' or bool(db_costos),
+        "puede_descargar_mapa": rol == 'admin' or False,
+        "puede_descargar_logs": rol == 'admin' or False,
     }
 
 @mapa_bp.route('/adhesa/<slug>')
@@ -39,9 +41,12 @@ def visor(slug):
     
     db.actualizar_metadatos_slot(slot_id, usuario, datetime.now().strftime("%Y-%m-%d %H:%M"))
     
-    rol, db_add, db_edit, db_tar, db_check, db_costos = db.obtener_permisos_usuario(usuario)
+    rol, db_add, db_edit, db_tar, db_check, db_costos, db_desc_mapa, db_desc_logs = db.obtener_permisos_usuario(usuario)
 
     permisos = _armar_permisos_mapa(rol, db_add, db_edit, db_tar, db_check, db_costos)
+    # Ajustar permisos específicos de descarga basados en DB
+    permisos['puede_descargar_mapa'] = rol == 'admin' or bool(db_desc_mapa)
+    permisos['puede_descargar_logs'] = rol == 'admin' or bool(db_desc_logs)
 
     return render_template('mapa.html', 
                            slot_id=slot_id, 
@@ -58,7 +63,7 @@ def guardar(slot_id):
         return {"ok": False, "error": "Acceso denegado"}, 401
 
     usuario = session.get('usuario')
-    rol, db_agregar, db_editar, db_agregar_tar, db_marcar_tar, db_costos = db.obtener_permisos_usuario(usuario)
+    rol, db_agregar, db_editar, db_agregar_tar, db_marcar_tar, db_costos, db_desc_mapa, db_desc_logs = db.obtener_permisos_usuario(usuario)
 
     puede_guardar = _puede_guardar_mapa(rol, db_agregar, db_editar, db_agregar_tar, db_marcar_tar, db_costos)
     
@@ -75,9 +80,14 @@ def guardar(slot_id):
 
 @mapa_bp.route('/admin/reporte/<rango>')
 def reporte(rango):
-    if session.get('rol') != 'admin': 
+    usuario = session.get('usuario')
+    if not usuario:
         return "Acceso denegado", 403
-        
+
+    rol, db_agregar, db_editar, db_agregar_tar, db_marcar_tar, db_costos, db_desc_mapa, db_desc_logs = db.obtener_permisos_usuario(usuario)
+    if rol != 'admin' and not bool(db_desc_logs):
+        return "Acceso denegado", 403
+
     logs = db.obtener_logs_por_rango(rango)
     csv_str = generar_csv_logs(logs)
     nombre = f"reporte_{rango}.csv"
@@ -111,11 +121,12 @@ def mis_permisos():
         return {"logeado": False}
         
     usuario = session.get('usuario')
-    rol, db_agregar, db_editar, db_agregar_tar, db_marcar_tar, db_costos = db.obtener_permisos_usuario(usuario)
-    
+    rol, db_agregar, db_editar, db_agregar_tar, db_marcar_tar, db_costos, db_desc_mapa, db_desc_logs = db.obtener_permisos_usuario(usuario)
     return {
         "logeado": True,
-        **_armar_permisos_mapa(rol, db_agregar, db_editar, db_agregar_tar, db_marcar_tar, db_costos)
+        **_armar_permisos_mapa(rol, db_agregar, db_editar, db_agregar_tar, db_marcar_tar, db_costos),
+        "puede_descargar_mapa": rol == 'admin' or bool(db_desc_mapa),
+        "puede_descargar_logs": rol == 'admin' or bool(db_desc_logs)
     }
 
 @mapa_bp.route('/api/reporte_mapa/<int:slot_id>', methods=['POST'])
@@ -127,6 +138,15 @@ def reporte_mapa(slot_id):
     data = payload.get('geojson', payload)
     if not data:
         return "Sin datos", 400
+
+    # Verificar permiso de descarga de CSV por parte del usuario
+    usuario = session.get('usuario')
+    if not usuario:
+        return "Acceso denegado", 403
+
+    rol, db_agregar, db_editar, db_agregar_tar, db_marcar_tar, db_costos, db_desc_mapa, db_desc_logs = db.obtener_permisos_usuario(usuario)
+    if rol != 'admin' and not bool(db_desc_mapa):
+        return "Sin permisos para descargar CSV", 403
 
     csv_str, nombre_archivo = generar_csv_mapa(data, slot_id)
 

@@ -9,7 +9,7 @@ def index():
         username = request.form['username']
         password = request.form['password']
         
-        valido, rol, add, edit, add_t, check_t, ver_costos = db.verificar_usuario_y_obtener_datos(username, password)
+        valido, rol, add, edit, add_t, check_t, ver_costos, puede_desc_mapa, puede_desc_logs = db.verificar_usuario_y_obtener_datos(username, password)
         
         if valido:
             db.actualizar_ultima_conexion(username)
@@ -18,7 +18,9 @@ def index():
                 'logeado': True, 'usuario': username, 'rol': rol,
                 'puede_agregar': add, 'puede_editar': edit,
                 'puede_agregar_tareas': add_t, 'puede_marcar_tareas': check_t,
-                'puede_ver_costos': ver_costos
+                'puede_ver_costos': ver_costos,
+                'puede_descargar_mapa': bool(puede_desc_mapa),
+                'puede_descargar_logs': bool(puede_desc_logs)
             })
             return redirect(url_for('dashboard.index'))
         return render_template('login.html', error='Credenciales incorrectas')

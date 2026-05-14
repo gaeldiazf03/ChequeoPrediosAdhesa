@@ -16,6 +16,8 @@ h2 {
     flex-wrap: wrap;
     margin-bottom: 10px;
 }
+/* Permitir scroll horizontal si hay muchos botones en pantallas pequeñas */
+.map-toolbar { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
 .map-button {
     padding: 10px 20px;
@@ -48,4 +50,19 @@ h2 {
     height: 500px;
     width: 100%;
     margin-bottom: 20px;
+}
+#map {
+    height: 60vh;
+    max-height: 700px;
+    min-height: 300px;
+    width: 100%;
+    margin-bottom: 20px;
+}
+
+@media (max-width: 900px) {
+    #map { height: 50vh; min-height: 240px; }
+}
+
+@media (max-width: 480px) {
+    #map { height: 45vh; min-height: 200px; }
 }

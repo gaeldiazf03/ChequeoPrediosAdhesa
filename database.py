@@ -42,7 +42,9 @@ class DatabaseManager:
                 'puede_editar': 'INTEGER DEFAULT 0',
                 'puede_agregar_tareas': 'INTEGER DEFAULT 0',
                 'puede_marcar_tareas': 'INTEGER DEFAULT 0',
-                'puede_ver_costos': 'INTEGER DEFAULT 0'
+                'puede_ver_costos': 'INTEGER DEFAULT 0',
+                'puede_descargar_mapa': 'INTEGER DEFAULT 0',
+                'puede_descargar_logs': 'INTEGER DEFAULT 0'
             }
             
             for col, tipo in nuevas_columnas.items():
@@ -60,11 +62,11 @@ class DatabaseManager:
             c.execute('SELECT COUNT(*) FROM usuarios')
             if c.fetchone()[0] == 0:
                 pass_encriptada = generate_password_hash('password')
-                c.execute('''INSERT INTO usuarios (username, password_hash, rol, puede_agregar, puede_editar, puede_agregar_tareas, puede_marcar_tareas) 
-                             VALUES (?, ?, ?, ?, ?, ?, ?)''', ('admin', pass_encriptada, 'admin', 1, 1, 1, 1))
+                c.execute('''INSERT INTO usuarios (username, password_hash, rol, puede_agregar, puede_editar, puede_agregar_tareas, puede_marcar_tareas, puede_ver_costos, puede_descargar_mapa, puede_descargar_logs) 
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', ('admin', pass_encriptada, 'admin', 1, 1, 1, 1, 1, 1, 1))
 
             # Asegurar que el admin siempre tenga todo al iniciar
-            c.execute('UPDATE usuarios SET puede_agregar=1, puede_editar=1, puede_agregar_tareas=1, puede_marcar_tareas=1, puede_ver_costos=1 WHERE rol="admin"')
+            c.execute('UPDATE usuarios SET puede_agregar=1, puede_editar=1, puede_agregar_tareas=1, puede_marcar_tareas=1, puede_ver_costos=1, puede_descargar_mapa=1, puede_descargar_logs=1 WHERE rol="admin"')
             conn.commit()
 
     # --- MÉTODOS DE USUARIOS ---
@@ -72,29 +74,29 @@ class DatabaseManager:
     def verificar_usuario_y_obtener_datos(self, username, password):
         with self._get_connection() as conn:
             c = conn.cursor()
-            c.execute('SELECT password_hash, rol, puede_agregar, puede_editar, puede_agregar_tareas, puede_marcar_tareas, puede_ver_costos FROM usuarios WHERE username = ?', (username,))
+            c.execute('SELECT password_hash, rol, puede_agregar, puede_editar, puede_agregar_tareas, puede_marcar_tareas, puede_ver_costos, puede_descargar_mapa, puede_descargar_logs FROM usuarios WHERE username = ?', (username,))
             res = c.fetchone()
             if res and check_password_hash(res[0], password):
-                return True, res[1], res[2], res[3], res[4], res[5], res[6] # <-- Añadimos res[6]
-        return False, None, None, None, None, None, None
+                return True, res[1], res[2], res[3], res[4], res[5], res[6], res[7], res[8]
+        return False, None, None, None, None, None, None, None, None
 
     def obtener_permisos_usuario(self, username):
         with self._get_connection() as conn:
             c = conn.cursor()
-            c.execute('SELECT rol, puede_agregar, puede_editar, puede_agregar_tareas, puede_marcar_tareas, puede_ver_costos FROM usuarios WHERE username = ?', (username,))
+            c.execute('SELECT rol, puede_agregar, puede_editar, puede_agregar_tareas, puede_marcar_tareas, puede_ver_costos, puede_descargar_mapa, puede_descargar_logs FROM usuarios WHERE username = ?', (username,))
             res = c.fetchone()
-            return res if res else ('user', 0, 0, 0, 0, 0) # <-- Añadimos un 0 extra
+            return res if res else ('user', 0, 0, 0, 0, 0, 0, 0)
 
     def obtener_todos_los_usuarios(self):
         with self._get_connection() as conn:
             c = conn.cursor()
-            # Añadimos puede_ver_costos al final. Ahora será el índice u[8] en tu HTML
-            c.execute('SELECT id, username, rol, puede_agregar, ultima_conexion, puede_editar, puede_agregar_tareas, puede_marcar_tareas, puede_ver_costos FROM usuarios')
+            # Añadimos los nuevos permisos al final para mantener compatibilidad de índices en templates
+            c.execute('SELECT id, username, rol, puede_agregar, ultima_conexion, puede_editar, puede_agregar_tareas, puede_marcar_tareas, puede_ver_costos, puede_descargar_mapa, puede_descargar_logs FROM usuarios')
             return c.fetchall()
 
     def alternar_permiso(self, user_id, columna):
         # Añadimos el nuevo permiso a la lista de columnas permitidas
-        validas = ['puede_agregar', 'puede_editar', 'puede_agregar_tareas', 'puede_marcar_tareas', 'puede_ver_costos']
+        validas = ['puede_agregar', 'puede_editar', 'puede_agregar_tareas', 'puede_marcar_tareas', 'puede_ver_costos', 'puede_descargar_mapa', 'puede_descargar_logs']
         if columna not in validas: return
 
         with self._get_connection() as conn:
@@ -107,9 +109,9 @@ class DatabaseManager:
             c = conn.cursor()
             try:
                 pass_hash = generate_password_hash(password)
-                # Añadimos puede_ver_costos
-                c.execute('INSERT INTO usuarios (username, password_hash, rol, puede_agregar, puede_editar, puede_agregar_tareas, puede_marcar_tareas, puede_ver_costos) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', 
-                          (username, pass_hash, 'user', 1, 0, 0, 0, 0))
+                # Añadimos puede_ver_costos y permisos de descarga con valores por defecto
+                c.execute('INSERT INTO usuarios (username, password_hash, rol, puede_agregar, puede_editar, puede_agregar_tareas, puede_marcar_tareas, puede_ver_costos, puede_descargar_mapa, puede_descargar_logs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', 
+                          (username, pass_hash, 'user', 1, 0, 0, 0, 0, 0, 0))
                 conn.commit()
             except sqlite3.IntegrityError:
                 pass

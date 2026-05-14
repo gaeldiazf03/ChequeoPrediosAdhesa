@@ -97,4 +97,21 @@ def toggle_grupo(grupo, user_id):
             db.alternar_permiso(user_id, 'puede_marcar_tareas')
         elif grupo == 'costos':
             db.alternar_permiso(user_id, 'puede_ver_costos')
+        elif grupo == 'reportes':
+            db.alternar_permiso(user_id, 'puede_descargar_mapa')
+            db.alternar_permiso(user_id, 'puede_descargar_logs')
+    return redirect(url_for('dashboard.index'))
+
+
+@dashboard_bp.route('/admin/toggle_descargar_mapa/<int:user_id>', methods=['POST'])
+def admin_toggle_descargar_mapa(user_id):
+    if session.get('rol') == 'admin':
+        db.alternar_permiso(user_id, 'puede_descargar_mapa')
+    return redirect(url_for('dashboard.index'))
+
+
+@dashboard_bp.route('/admin/toggle_descargar_logs/<int:user_id>', methods=['POST'])
+def admin_toggle_descargar_logs(user_id):
+    if session.get('rol') == 'admin':
+        db.alternar_permiso(user_id, 'puede_descargar_logs')
     return redirect(url_for('dashboard.index'))

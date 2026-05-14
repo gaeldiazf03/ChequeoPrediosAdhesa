@@ -1,54 +1,51 @@
 <!DOCTYPE html>
 <html lang="es">
 
-    <head>
-        <meta charset="UTF-8">
-        <title>Editor KML</title>
-        <link rel="stylesheet"
-            href="https://unpkg.com/leaflet/dist/leaflet.css" />
-        <link rel="stylesheet"
-            href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
-        <link rel="stylesheet"
-            href="{{ url_for('static', filename='css/mapa.css') }}">
-        <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    </head>
+<head>
+    <meta charset="UTF-8">
+    <title>Editor KML</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/mapa.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
 
-    <body>
-        <h2>Editor y Creador de Áreas KML</h2>
+<body>
+    <h2>Editor y Creador de Áreas KML</h2>
 
-        <div class="map-toolbar">
-            {% if puede_agregar %}
-            <button id="btnCrearLote" onclick="toggleDibujo()" class="map-button map-button-primary">Crear Lote</button>
-            {% else %}
-            <button id="btnCrearLote" disabled class="map-button map-button-disabled">Crear Lote (sin permiso)</button>
-            {% endif %}
+    <div class="map-toolbar">
+        {% if puede_agregar %}
+        <button id="btnCrearLote" onclick="toggleDibujo()" class="map-button map-button-primary">Crear Lote</button>
+        {% endif %}
 
-            <button id="btnGuardarManual" onclick="guardarManual()" class="map-button map-button-info">Guardar Cambios</button>
-            <span id="estadoGuardado" class="map-status">Listo</span>
-            <button onclick="descargarReporte(this)" class="map-button map-button-info">📥 Descargar Avances</button>
+        {% if puede_agregar or puede_editar %}
+        <button id="btnGuardarManual" onclick="guardarManual()" class="map-button map-button-info">Guardar Cambios</button>
+        <span id="estadoGuardado" class="map-status">Listo</span>
+        {% endif %}
 
-            <button onclick="exportarKML()" class="map-button map-button-primary">Exportar a KML</button>
-        </div>
+        {% if puede_descargar_mapa %}
+        <button onclick="descargarReporteCsv(this)" class="map-button map-button-info">📥 Descargar CSV</button>
+        {% endif %}
 
-        <div id="map" data-slot-id="{{ slot_id }}"
-            data-puede-agregar="{{ puede_agregar|lower }}"
-            data-puede-editar="{{ puede_editar|lower }}"
-            data-es-admin="{{ es_admin|lower }}"
-            data-puede-marcar-tareas="{{ puede_marcar_tareas|lower }}"
-            data-puede-agregar-tareas="{{ puede_agregar_tareas|lower }}"
-            data-usuario-actual="{{ usuario_actual }}"
-            data-usuarios-lista="{{ usuarios_lista_json }}"
-            data-puede-ver-costos="{{ puede_ver_costos | lower }}"></div>
+        <button onclick="descargarReporte(this)" class="map-button map-button-info">📄 Descargar Avances</button>
+        <button onclick="exportarKML()" class="map-button map-button-primary">Exportar a KML</button>
+    </div>
 
-        <!-- Scripts -->
-        <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-        <script
-            src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
-        <script
-            src="https://api.mapbox.com/mapbox.js/plugins/leaflet-omnivore/v0.3.1/leaflet-omnivore.min.js"></script>
+    <div id="map" data-slot-id="{{ slot_id }}" data-puede-agregar="{{ puede_agregar|lower }}"
+        data-puede-editar="{{ puede_editar|lower }}" data-es-admin="{{ es_admin|lower }}"
+        data-puede-marcar-tareas="{{ puede_marcar_tareas|lower }}"
+        data-puede-agregar-tareas="{{ puede_agregar_tareas|lower }}" data-usuario-actual="{{ usuario_actual }}"
+        data-usuarios-lista="{{ usuarios_lista_json }}" data-puede-ver-costos="{{ puede_ver_costos|lower }}"
+        data-puede-descargar-mapa="{{ puede_descargar_mapa|lower }}"
+        data-puede-descargar-logs="{{ puede_descargar_logs|lower }}"></div>
 
-        <script src="{{ url_for('static', filename='js/mapa.js') }}"></script>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    <script src="https://api.mapbox.com/mapbox.js/plugins/leaflet-omnivore/v0.3.1/leaflet-omnivore.min.js"></script>
 
-    </body>
+    <script src="{{ url_for('static', filename='js/mapa.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/mapa_autoguardado.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/mapa_vigilancia.js') }}"></script>
+</body>
 
 </html>

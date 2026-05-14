@@ -1,14 +1,16 @@
 // Variables de entorno recuperadas mediante HTML dataset
 var mapContainer = document.getElementById('map');
-var slotId = mapContainer.dataset.slotId;
-var puedeAgregar = mapContainer.dataset.puedeAgregar === 'true';
-var puedeEditar = mapContainer.dataset.puedeEditar === 'true';
-var esAdmin = mapContainer.dataset.esAdmin === 'true';
-var puedeMarcarTareas = mapContainer.dataset.puedeMarcarTareas === 'true';
-var puedeAgregarTareas = mapContainer.dataset.puedeAgregarTareas === 'true';
-var usuarioActual = mapContainer.dataset.usuarioActual;
-var usuariosLista = mapContainer.dataset.usuariosLista ? JSON.parse(mapContainer.dataset.usuariosLista) : [];
-var puedeVerCostos = mapContainer.dataset.puedeVerCostos === 'true';
+var slotId = mapContainer ? mapContainer.dataset.slotId : null;
+var puedeAgregar = mapContainer ? mapContainer.dataset.puedeAgregar === 'true' : false;
+var puedeEditar = mapContainer ? mapContainer.dataset.puedeEditar === 'true' : false;
+var esAdmin = mapContainer ? mapContainer.dataset.esAdmin === 'true' : false;
+var puedeMarcarTareas = mapContainer ? mapContainer.dataset.puedeMarcarTareas === 'true' : false;
+var puedeAgregarTareas = mapContainer ? mapContainer.dataset.puedeAgregarTareas === 'true' : false;
+var usuarioActual = mapContainer ? mapContainer.dataset.usuarioActual : '';
+var usuariosLista = mapContainer && mapContainer.dataset.usuariosLista ? JSON.parse(mapContainer.dataset.usuariosLista) : [];
+var puedeVerCostos = mapContainer ? mapContainer.dataset.puedeVerCostos === 'true' : false;
+var puedeDescargarMapa = mapContainer ? mapContainer.dataset.puedeDescargarMapa === 'true' : false;
+var puedeDescargarLogs = mapContainer ? mapContainer.dataset.puedeDescargarLogs === 'true' : false;
 
 // Inicializar mapa
 var map = L.map('map').setView([22.2331, -97.8611], 13); // Centrado en Tampico
@@ -56,8 +58,8 @@ function construirOpcionesHTML(opciones, valorSeleccionado) {
 function actualizarPopupActual(mutador) {
     if (!capaActualPopup) return;
     mutador(capaActualPopup);
-    registrarCambio();
-    guardarAutomaticamente();
+    if (typeof registrarCambio === 'function') registrarCambio();
+    if (typeof guardarAutomaticamente === 'function') guardarAutomaticamente();
     capaActualPopup.setPopupContent(crearContenidoPopup(capaActualPopup));
 }
 
@@ -66,10 +68,7 @@ function tienePermisoDeGuardado() {
 }
 
 function crearFilaDosColumnas(columnaIzquierda, columnaDerecha) {
-    return `<div style="display: flex; gap: 5px; margin-bottom:8px;">
-                <div style="flex: 1;">${columnaIzquierda}</div>
-                <div style="flex: 1;">${columnaDerecha}</div>
-             </div>`;
+    return `<div style="display: flex; gap: 5px; margin-bottom:8px;">\n                <div style="flex: 1;">${columnaIzquierda}</div>\n                <div style="flex: 1;">${columnaDerecha}</div>\n             </div>`;
 }
 
 function toggleDibujo() {
@@ -173,17 +172,14 @@ function crearContenidoPopup(layer) {
         html += `<p style="margin: 0 0 15px 0; font-weight: bold; color: #007bff;">${escaparHtml(props.responsable || 'Sin Responsable')}</p>`;
     }
 
-    html += `<label style="${estilosPopup.etiqueta}">Tareas:</label>
-             <ul style="padding-left: 0; list-style: none; margin-top: 5px; margin-bottom: 15px;">`;
+    html += `<label style="${estilosPopup.etiqueta}">Tareas:</label>\n             <ul style="padding-left: 0; list-style: none; margin-top: 5px; margin-bottom: 15px;">`;
 
     props.tareas.forEach(function (tarea, index) {
         var checkAttr = tarea.completada ? 'checked' : '';
         var disableCheck = puedeMarcar ? '' : 'disabled';
         var estiloTexto = tarea.completada ? 'text-decoration: line-through; color: #aaa;' : 'color: #333;';
 
-        html += `<li style="margin-bottom: 8px; display: flex; align-items: center;">
-                    <input type="checkbox" ${checkAttr} ${disableCheck} onchange="toggleTarea(${index}, this.checked)" style="margin-right: 8px; cursor: pointer;">
-                    <span style="flex: 1; ${estiloTexto}">${escaparHtml(tarea.texto)}</span>`;
+        html += `<li style="margin-bottom: 8px; display: flex; align-items: center;">\n                    <input type="checkbox" ${checkAttr} ${disableCheck} onchange="toggleTarea(${index}, this.checked)" style="margin-right: 8px; cursor: pointer;">\n                    <span style="flex: 1; ${estiloTexto}">${escaparHtml(tarea.texto)}</span>`;
 
         if (puedeGestionarTareas) {
             html += ` <button onclick="eliminarTarea(${index})" style="color: white; background: #dc3545; border: none; cursor: pointer; border-radius: 3px; padding: 2px 6px; font-size: 10px; margin-left: 5px;">X</button>`;
@@ -193,67 +189,40 @@ function crearContenidoPopup(layer) {
     html += `</ul>`;
 
     if (puedeGestionarTareas) {
-        html += `<div style="display: flex; gap: 5px; border-top: 1px solid #eee; padding-top: 10px; margin-bottom: 15px;">
-                    <input type="text" id="inputNuevaTarea" placeholder="Nueva tarea..." style="flex: 1; padding: 5px;">
-                    <button onclick="agregarTarea()" style="padding: 5px 10px; background: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer;">Add</button>
-                </div>`;
+        html += `<div style="display: flex; gap: 5px; border-top: 1px solid #eee; padding-top: 10px; margin-bottom: 15px;">\n                    <input type="text" id="inputNuevaTarea" placeholder="Nueva tarea..." style="flex: 1; padding: 5px;">\n                    <button onclick="agregarTarea()" style="padding: 5px 10px; background: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer;">Add</button>\n                </div>`;
     }
 
-    html += `<div style="background: #f9f9f9; padding: 10px; border-radius: 5px; border: 1px solid #ddd;">
-                <h5 style="margin-top: 0; margin-bottom: 10px; color: #444;">Datos Agrícolas</h5>`;
+    html += `<div style="background: #f9f9f9; padding: 10px; border-radius: 5px; border: 1px solid #ddd;">\n                <h5 style="margin-top: 0; margin-bottom: 10px; color: #444;">Datos Agrícolas</h5>`;
 
     if (esAdmin || puedeVerCostos) {
-        html += `<label style="${estilosPopup.etiquetaPequena}">Costo Estimado ($):</label>
-                 <input type="number" value="${escaparHtml(props.costo || 0)}" onchange="actualizarDato('costo', this.value)" style="${estilosPopup.input}">`;
+        html += `<label style="${estilosPopup.etiquetaPequena}">Costo Estimado ($):</label>\n                 <input type="number" value="${escaparHtml(props.costo || 0)}" onchange="actualizarDato('costo', this.value)" style="${estilosPopup.input}">`;
     }
 
-    html += `<label style="${estilosPopup.etiquetaPequena}">Variedad de Caña:</label>
-             <input type="text" placeholder="Ej. CP 72-2086" value="${escaparHtml(props.variedad_cana || '')}" onchange="actualizarDato('variedad_cana', this.value)" style="${estilosPopup.input}">`;
+    html += `<label style="${estilosPopup.etiquetaPequena}">Variedad de Caña:</label>\n             <input type="text" placeholder="Ej. CP 72-2086" value="${escaparHtml(props.variedad_cana || '')}" onchange="actualizarDato('variedad_cana', this.value)" style="${estilosPopup.input}">`;
 
-    html += `<label style="${estilosPopup.etiquetaPequena}">Edad de Cultivo (Meses):</label>
-             <input type="number" min="0" value="${escaparHtml(props.edad_cultivo || '')}" onchange="actualizarDato('edad_cultivo', this.value)" style="${estilosPopup.input}">`;
+    html += `<label style="${estilosPopup.etiquetaPequena}">Edad de Cultivo (Meses):</label>\n             <input type="number" min="0" value="${escaparHtml(props.edad_cultivo || '')}" onchange="actualizarDato('edad_cultivo', this.value)" style="${estilosPopup.input}">`;
 
-    html += `<label style="${estilosPopup.etiquetaPequena}">Tipo de Suelo:</label>
-             <select onchange="actualizarDato('tipo_suelo', this.value)" style="${estilosPopup.input}">
-                 ${construirOpcionesHTML(opcionesSuelo, props.tipo_suelo || '')}
-             </select>`;
+    html += `<label style="${estilosPopup.etiquetaPequena}">Tipo de Suelo:</label>\n             <select onchange="actualizarDato('tipo_suelo', this.value)" style="${estilosPopup.input}">\n                 ${construirOpcionesHTML(opcionesSuelo, props.tipo_suelo || '')}\n             </select>`;
 
     html += crearFilaDosColumnas(
-        `<label style="${estilosPopup.etiquetaPequena}">Siembra:</label>
-         <input type="date" value="${escaparHtml(props.fecha_siembra || '')}" onchange="actualizarDato('fecha_siembra', this.value)" style="${estilosPopup.input}">`,
-        `<label style="${estilosPopup.etiquetaPequena}">Últ. Aplic.:</label>
-         <input type="date" value="${escaparHtml(props.ultima_aplicacion || '')}" onchange="actualizarDato('ultima_aplicacion', this.value)" style="${estilosPopup.input}">`
+        `<label style="${estilosPopup.etiquetaPequena}">Siembra:</label>\n         <input type="date" value="${escaparHtml(props.fecha_siembra || '')}" onchange="actualizarDato('fecha_siembra', this.value)" style="${estilosPopup.input}">`,
+        `<label style="${estilosPopup.etiquetaPequena}">Últ. Aplic.:</label>\n         <input type="date" value="${escaparHtml(props.ultima_aplicacion || '')}" onchange="actualizarDato('ultima_aplicacion', this.value)" style="${estilosPopup.input}">`
     );
 
-    html += `<label style="${estilosPopup.etiquetaPequena}">Tipo de Riego:</label>
-             <select onchange="actualizarDato('tipo_riego', this.value)" style="${estilosPopup.input}">
-                 ${construirOpcionesHTML(opcionesRiego, props.tipo_riego || '')}
-             </select>`;
+    html += `<label style="${estilosPopup.etiquetaPequena}">Tipo de Riego:</label>\n             <select onchange="actualizarDato('tipo_riego', this.value)" style="${estilosPopup.input}">\n                 ${construirOpcionesHTML(opcionesRiego, props.tipo_riego || '')}\n             </select>`;
 
-    html += `<label style="${estilosPopup.etiquetaPequena}">Rendimiento Esperado (TCH):</label>
-             <input type="number" step="0.1" value="${escaparHtml(props.rendimiento_tch || '')}" onchange="actualizarDato('rendimiento_tch', this.value)" style="${estilosPopup.input}">`;
+    html += `<label style="${estilosPopup.etiquetaPequena}">Rendimiento Esperado (TCH):</label>\n             <input type="number" step="0.1" value="${escaparHtml(props.rendimiento_tch || '')}" onchange="actualizarDato('rendimiento_tch', this.value)" style="${estilosPopup.input}">`;
 
     html += crearFilaDosColumnas(
-        `<label style="${estilosPopup.etiquetaPequena}">Maleza:</label>
-         <select onchange="actualizarDato('nivel_maleza', this.value)" style="${estilosPopup.input}">
-             ${construirOpcionesHTML(opcionesMaleza, props.nivel_maleza || '')}
-         </select>`,
-        `<label style="${estilosPopup.etiquetaPequena}">Humedad:</label>
-         <select onchange="actualizarDato('nivel_humedad', this.value)" style="${estilosPopup.input}">
-             ${construirOpcionesHTML(opcionesHumedad, props.nivel_humedad || '')}
-         </select>`
+        `<label style="${estilosPopup.etiquetaPequena}">Maleza:</label>\n         <select onchange="actualizarDato('nivel_maleza', this.value)" style="${estilosPopup.input}">\n             ${construirOpcionesHTML(opcionesMaleza, props.nivel_maleza || '')}\n         </select>`,
+        `<label style="${estilosPopup.etiquetaPequena}">Humedad:</label>\n         <select onchange="actualizarDato('nivel_humedad', this.value)" style="${estilosPopup.input}">\n             ${construirOpcionesHTML(opcionesHumedad, props.nivel_humedad || '')}\n         </select>`
     );
 
-    html += `<label style="${estilosPopup.etiquetaPequena}">Estatus Sanitario:</label>
-             <select onchange="actualizarDato('estatus_sanitario', this.value)" style="${estilosPopup.input}">
-                 ${construirOpcionesHTML(opcionesSanidad, props.estatus_sanitario || 'Sano')}
-             </select>`;
+    html += `<label style="${estilosPopup.etiquetaPequena}">Estatus Sanitario:</label>\n             <select onchange="actualizarDato('estatus_sanitario', this.value)" style="${estilosPopup.input}">\n                 ${construirOpcionesHTML(opcionesSanidad, props.estatus_sanitario || 'Sano')}\n             </select>`;
 
-    html += `<label style="${estilosPopup.etiquetaPequena}">Tipo de Fertilización:</label>
-             <input type="text" placeholder="Ej. Urea, NPK..." value="${escaparHtml(props.tipo_fertilizacion || '')}" onchange="actualizarDato('tipo_fertilizacion', this.value)" style="${estilosPopup.input}">`;
+    html += `<label style="${estilosPopup.etiquetaPequena}">Tipo de Fertilización:</label>\n             <input type="text" placeholder="Ej. Urea, NPK..." value="${escaparHtml(props.tipo_fertilizacion || '')}" onchange="actualizarDato('tipo_fertilizacion', this.value)" style="${estilosPopup.input}">`;
 
-    html += `<label style="${estilosPopup.etiquetaPequena}">Incidencias / Notas / Historial:</label>
-             <textarea onchange="actualizarDato('incidencias', this.value)" style="${estilosPopup.input} height:60px;">${escaparHtml(props.incidencias || '')}</textarea>`;
+    html += `<label style="${estilosPopup.etiquetaPequena}">Incidencias / Notas / Historial:</label>\n             <textarea onchange="actualizarDato('incidencias', this.value)" style="${estilosPopup.input} height:60px;">${escaparHtml(props.incidencias || '')}</textarea>`;
 
     html += `</div></div>`;
     return html;
@@ -296,7 +265,7 @@ map.on(L.Draw.Event.CREATED, function (event) {
     var layer = event.layer;
     prepararCapa(layer); // Le inyectamos la lógica del globo
     drawnItems.addLayer(layer);
-    registrarCambio();
+    if (typeof registrarCambio === 'function') registrarCambio();
 
     var btn = document.getElementById('btnCrearLote');
     if (btn && puedeAgregar) {
@@ -313,74 +282,14 @@ map.on('draw:drawstop', function (e) {
     }
 });
 
-// Autoguardado y controles de Leaflet
-function registrarCambio() {
-    if (!cargaInicialCompleta) return;
-    cambiosPendientes = true;
-    actualizarEstado('Cambios pendientes de guardado');
-}
-
-function actualizarEstado(texto) {
-    var estado = document.getElementById('estadoGuardado');
-    if (estado) estado.innerText = texto;
-}
-
-function guardarAutomaticamente() {
-    if (!slotId || !cambiosPendientes || guardando) return;
-    if (!tienePermisoDeGuardado()) return;
-
-    guardando = true;
-    actualizarEstado('Guardando...');
-
-    fetch('/api/guardar_kml/' + slotId, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(drawnItems.toGeoJSON())
-    })
-        .then(function (response) {
-            if (!response.ok) throw new Error('No se pudo guardar el mapa');
-            return response.json();
-        })
-        .then(function () {
-            cambiosPendientes = false;
-            actualizarEstado('Guardado automáticamente');
-        })
-        .catch(function (error) {
-            console.error('Error al guardar:', error);
-            actualizarEstado('Error al guardar');
-        })
-        .finally(function () { guardando = false; });
-}
-
-function guardarManual() {
-    if (!slotId || guardando) return;
-    if (!tienePermisoDeGuardado()) return;
-
-    cambiosPendientes = true;
-    guardarAutomaticamente();
-
-    var btn = document.getElementById('btnGuardarManual');
-    if (btn) {
-        var textoOriginal = btn.innerText;
-        btn.innerText = "¡Guardado!";
-        btn.style.backgroundColor = "#20c997";
-        setTimeout(function () {
-            btn.innerText = textoOriginal;
-            btn.style.backgroundColor = "#17a2b8";
-        }, 2000);
-    }
-}
-
 var drawControl = new L.Control.Draw({
     edit: puedeEditar ? { featureGroup: drawnItems, remove: true } : false,
     draw: false
 });
 if (puedeEditar) map.addControl(drawControl);
 
-map.on('draw:edited', registrarCambio);
-map.on('draw:deleted', registrarCambio);
-
-setInterval(guardarAutomaticamente, 60000);
+map.on('draw:edited', function (e) { if (typeof registrarCambio === 'function') registrarCambio(); });
+map.on('draw:deleted', function (e) { if (typeof registrarCambio === 'function') registrarCambio(); });
 
 // Auto-carga desde la BD
 if (slotId) {
@@ -395,40 +304,17 @@ if (slotId) {
                 map.fitBounds(drawnItems.getBounds());
             }
             cargaInicialCompleta = true;
-            actualizarEstado('Mapa cargado');
+            if (typeof actualizarEstado === 'function') actualizarEstado('Mapa cargado');
         })
         .on('error', function () {
             cargaInicialCompleta = true;
-            actualizarEstado('Mapa listo');
+            if (typeof actualizarEstado === 'function') actualizarEstado('Mapa listo');
         });
 } else {
     cargaInicialCompleta = true;
 }
 
-// Vigilante de permisos
-setInterval(function () {
-    fetch('/api/mis_permisos')
-        .then(response => response.json())
-        .then(data => {
-            if (!data.logeado) { window.location.href = '/'; return; }
-            if (!data.puede_agregar && puedeAgregar) {
-                puedeAgregar = false;
-                var btn = document.getElementById('btnCrearLote');
-                if (btn) {
-                    polygonDrawer.disable();
-                    btn.innerText = "Crear Lote (sin permiso)";
-                    btn.style.backgroundColor = "#adb5bd";
-                    btn.disabled = true;
-                    btn.style.cursor = "not-allowed";
-                }
-            }
-            if (!data.puede_editar && puedeEditar) {
-                puedeEditar = false;
-                if (drawControl) map.removeControl(drawControl);
-            }
-        })
-        .catch(error => console.error("Error validando permisos:", error));
-}, 60000);
+// Vigilante de permisos: movido a mapa_vigilancia.js
 
 function exportarKML() {
     var geojsonData = drawnItems.toGeoJSON();
@@ -488,3 +374,56 @@ function descargarReporte(btn) {
         btn.disabled = false;
     });
 }
+
+function descargarReporteCsv(btn) {
+    if (!puedeDescargarMapa && !esAdmin) {
+        alert('No tienes permiso para descargar este CSV.');
+        return;
+    }
+
+    var textoOriginal = btn.innerHTML;
+    btn.innerHTML = "Generando CSV...";
+    btn.disabled = true;
+
+    var geojson = drawnItems.toGeoJSON();
+
+    fetch('/api/reporte_mapa/' + slotId, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(geojson)
+    })
+    .then(res => {
+        if (!res.ok) throw new Error("Error en el servidor");
+        return res.blob();
+    })
+    .then(blob => {
+        var fileName = "Avances_Proyecto_" + slotId + ".csv";
+        var url = window.URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+
+        btn.innerHTML = textoOriginal;
+        btn.disabled = false;
+        alert("¡CSV descargado con éxito en tu equipo!");
+    })
+    .catch(error => {
+        console.error(error);
+        alert("Ocurrió un error al generar el CSV.");
+        btn.innerHTML = textoOriginal;
+        btn.disabled = false;
+    });
+}
+
+// Ajuste responsive: invalidar tamaño del mapa al cambiar tamaño de ventana
+window.addEventListener('resize', function () {
+    try {
+        if (typeof map !== 'undefined' && map && typeof map.invalidateSize === 'function') {
+            // Pequeño delay para esperar a que el layout termine
+            setTimeout(function () { map.invalidateSize(); }, 200);
+        }
+    } catch (e) { console.warn('Error al invalidar tamaño del mapa:', e); }
+});
