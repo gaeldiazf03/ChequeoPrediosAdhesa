@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acceso Denegado - Plataforma Agrónómica</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .icon {
+            width: 100px;
+            height: 100px;
+            background: #ff6b6b;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 30px;
+            font-size: 50px;
+        }
+
+        h1 {
+            color: #2d3748;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .code {
+            color: #ff6b6b;
+            font-size: 48px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+
+        .message {
+            color: #718096;
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+
+        .details {
+            background: #f7fafc;
+            border-left: 4px solid #ff6b6b;
+            padding: 15px;
+            margin: 20px 0;
+            text-align: left;
+            border-radius: 4px;
+        }
+
+        .details p {
+            margin: 8px 0;
+            font-size: 14px;
+            color: #4a5568;
+        }
+
+        .details strong {
+            color: #2d3748;
+        }
+
+        .buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 30px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #2d3748;
+        }
+
+        .btn-secondary:hover {
+            background: #cbd5e0;
+            transform: translateY(-2px);
+        }
+
+        .info-box {
+            background: #edf2f7;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 14px;
+            color: #4a5568;
+            line-height: 1.6;
+        }
+
+        .info-box p {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">🔒</div>
+        
+        <div class="code">403</div>
+        
+        <h1>Acceso Denegado</h1>
+        
+        <div class="message">
+            <p>No tienes permisos para acceder a este recurso.</p>
+        </div>
+
+        {% if permiso and permiso != 'desconocido' %}
+        <div class="details">
+            <p>
+                <strong>Permiso requerido:</strong><br>
+                <code>{{ permiso }}</code>
+            </p>
+        </div>
+        {% endif %}
+
+        {% if usuario %}
+        <div class="details">
+            <p>
+                <strong>Usuario:</strong> {{ usuario }}
+            </p>
+        </div>
+        {% endif %}
+
+        <div class="info-box">
+            <p>
+                <strong>¿Qué significa esto?</strong><br>
+                Este recurso es confidencial y requiere permisos especiales. 
+                Si crees que deberías tener acceso, contacta al administrador.
+            </p>
+        </div>
+
+        <div class="buttons">
+            <a href="/" class="btn btn-primary">Ir al Dashboard</a>
+            <a href="javascript:history.back()" class="btn btn-secondary">Volver Atrás</a>
+        </div>
+    </div>
+</body>
+</html>

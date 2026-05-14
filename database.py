@@ -33,6 +33,36 @@ class DatabaseManager:
             c.execute('''CREATE TABLE IF NOT EXISTS logs
                          (id INTEGER PRIMARY KEY, usuario TEXT, accion TEXT, 
                           detalles TEXT, fecha TEXT)''')
+            
+            # === NUEVAS TABLAS PARA CONTROL DE ACCESO ===
+            
+            # Tabla de Roles
+            c.execute('''CREATE TABLE IF NOT EXISTS roles
+                         (id INTEGER PRIMARY KEY, nombre TEXT UNIQUE NOT NULL, descripcion TEXT, fecha_creacion TEXT)''')
+            
+            # Tabla de Permisos
+            c.execute('''CREATE TABLE IF NOT EXISTS permisos
+                         (id INTEGER PRIMARY KEY, nombre TEXT UNIQUE NOT NULL, descripcion TEXT, categoria TEXT)''')
+            
+            # Tabla de Relación Roles-Permisos
+            c.execute('''CREATE TABLE IF NOT EXISTS roles_permisos
+                         (id INTEGER PRIMARY KEY, rol_id INTEGER NOT NULL, permiso_id INTEGER NOT NULL, 
+                          UNIQUE(rol_id, permiso_id), FOREIGN KEY(rol_id) REFERENCES roles(id),
+                          FOREIGN KEY(permiso_id) REFERENCES permisos(id))''')
+            
+            # Tabla de Relación Usuario-Roles
+            c.execute('''CREATE TABLE IF NOT EXISTS usuario_roles
+                         (id INTEGER PRIMARY KEY, usuario_id INTEGER NOT NULL, rol_id INTEGER NOT NULL,
+                          fecha_asignacion TEXT, UNIQUE(usuario_id, rol_id),
+                          FOREIGN KEY(usuario_id) REFERENCES usuarios(id),
+                          FOREIGN KEY(rol_id) REFERENCES roles(id))''')
+            
+            # Tabla de Auditoría de Accesos (datos sensibles)
+            c.execute('''CREATE TABLE IF NOT EXISTS auditoria_accesos
+                         (id INTEGER PRIMARY KEY, usuario_id INTEGER NOT NULL, usuario_nombre TEXT,
+                          accion TEXT NOT NULL, recurso TEXT, resultado TEXT,
+                          ip_address TEXT, fecha TEXT, detalles TEXT,
+                          FOREIGN KEY(usuario_id) REFERENCES usuarios(id))''')
 
             # Verificación de columnas nuevas (Migración automática)
             c.execute('PRAGMA table_info(usuarios)')
@@ -67,7 +97,138 @@ class DatabaseManager:
 
             # Asegurar que el admin siempre tenga todo al iniciar
             c.execute('UPDATE usuarios SET puede_agregar=1, puede_editar=1, puede_agregar_tareas=1, puede_marcar_tareas=1, puede_ver_costos=1, puede_descargar_mapa=1, puede_descargar_logs=1 WHERE rol="admin"')
+            
+            # === INICIALIZACIÓN DE ROLES Y PERMISOS ===
+            
+            # Insertar roles por defecto
+            roles_por_defecto = [
+                ('administrador', 'Acceso total a todas las funciones'),
+                ('supervisor', 'Supervisión de operaciones y reportes'),
+                ('operario', 'Ejecución de actividades y registro de datos'),
+                ('consultor', 'Solo lectura de datos no sensibles')
+            ]
+            
+            for nombre, desc in roles_por_defecto:
+                try:
+                    c.execute('INSERT INTO roles (nombre, descripcion, fecha_creacion) VALUES (?, ?, ?)',
+                              (nombre, desc, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                except sqlite3.IntegrityError:
+                    pass
+            
+            # Insertar permisos por defecto
+            permisos_por_defecto = [
+                # Permisos de visualización
+                ('ver_dashboard', 'Ver dashboard principal', 'visualizacion'),
+                ('ver_mapa', 'Ver mapa de lotes', 'visualizacion'),
+                ('ver_lotes', 'Ver datos de lotes', 'visualizacion'),
+                ('ver_actividades', 'Ver timeline de actividades', 'visualizacion'),
+                
+                # Permisos sensibles - Costos
+                ('ver_costos', 'Ver datos de costos', 'costos'),
+                ('editar_costos', 'Registrar y editar costos', 'costos'),
+                ('exportar_costos', 'Exportar reportes de costos', 'costos'),
+                
+                # Permisos sensibles - Inventario
+                ('ver_inventario', 'Ver inventario de materiales', 'inventario'),
+                ('editar_inventario', 'Registrar entradas y salidas', 'inventario'),
+                ('exportar_inventario', 'Exportar reportes de inventario', 'inventario'),
+                
+                # Permisos sensibles - Datos personales
+                ('ver_datos_personales', 'Ver datos personales de usuarios', 'usuarios'),
+                ('gestionar_usuarios', 'CRUD de usuarios y roles', 'usuarios'),
+                ('editar_permisos', 'Asignar/revocar permisos', 'usuarios'),
+                
+                # Permisos de operación
+                ('crear_actividades', 'Crear tareas y cronogramas', 'operacion'),
+                ('completar_actividades', 'Marcar actividades como completadas', 'operacion'),
+                ('registrar_cosecha', 'Registrar datos de cosecha', 'operacion'),
+                
+                # Permisos de capas satelitales/sensibles
+                ('ver_ndvi', 'Ver capas NDVI y vegetación', 'satelital'),
+                ('ver_meteorologia', 'Ver datos meteorológicos', 'satelital'),
+                ('ver_alertas', 'Ver alertas del sistema', 'alertas'),
+                ('generar_alertas', 'Generar y configurar alertas', 'alertas'),
+                
+                # Permisos de reportes
+                ('generar_reportes', 'Generar reportes PDF', 'reportes'),
+                ('exportar_reportes', 'Descargar y exportar reportes', 'reportes'),
+                
+                # Permisos de auditoría
+                ('ver_auditoria', 'Ver logs de acceso y auditoría', 'auditoria'),
+                ('ver_logs', 'Ver logs de actividades', 'auditoria'),
+            ]
+            
+            for nombre, desc, categoria in permisos_por_defecto:
+                try:
+                    c.execute('INSERT INTO permisos (nombre, descripcion, categoria) VALUES (?, ?, ?)',
+                              (nombre, desc, categoria))
+                except sqlite3.IntegrityError:
+                    pass
+            
+            # Asignar permisos a roles
+            # Administrador tiene todos los permisos
+            self._asignar_permisos_role_completo(c, 'administrador')
+            
+            # Supervisor: ver todo pero no editar sensibles
+            permisos_supervisor = [
+                'ver_dashboard', 'ver_mapa', 'ver_lotes', 'ver_actividades',
+                'ver_costos', 'ver_inventario', 'ver_datos_personales',
+                'crear_actividades', 'completar_actividades', 'generar_reportes',
+                'exportar_reportes', 'ver_auditoria', 'ver_logs', 'ver_ndvi',
+                'ver_meteorologia', 'ver_alertas'
+            ]
+            self._asignar_permisos_role(c, 'supervisor', permisos_supervisor)
+            
+            # Operario: ejecución de tareas
+            permisos_operario = [
+                'ver_dashboard', 'ver_mapa', 'ver_lotes', 'ver_actividades',
+                'crear_actividades', 'completar_actividades', 'registrar_cosecha',
+                'ver_alertas'
+            ]
+            self._asignar_permisos_role(c, 'operario', permisos_operario)
+            
+            # Consultor: solo lectura no sensible
+            permisos_consultor = [
+                'ver_dashboard', 'ver_mapa', 'ver_lotes', 'ver_actividades'
+            ]
+            self._asignar_permisos_role(c, 'consultor', permisos_consultor)
+            
             conn.commit()
+    
+    def _asignar_permisos_role_completo(self, cursor, nombre_rol):
+        """Asigna todos los permisos a un rol."""
+        try:
+            cursor.execute('SELECT id FROM roles WHERE nombre = ?', (nombre_rol,))
+            rol = cursor.fetchone()
+            if rol:
+                cursor.execute('SELECT id FROM permisos')
+                permisos = cursor.fetchall()
+                for permiso in permisos:
+                    try:
+                        cursor.execute('INSERT INTO roles_permisos (rol_id, permiso_id) VALUES (?, ?)',
+                                      (rol[0], permiso[0]))
+                    except sqlite3.IntegrityError:
+                        pass
+        except Exception:
+            pass
+    
+    def _asignar_permisos_role(self, cursor, nombre_rol, nombres_permisos):
+        """Asigna permisos específicos a un rol."""
+        try:
+            cursor.execute('SELECT id FROM roles WHERE nombre = ?', (nombre_rol,))
+            rol = cursor.fetchone()
+            if rol:
+                for nombre_permiso in nombres_permisos:
+                    cursor.execute('SELECT id FROM permisos WHERE nombre = ?', (nombre_permiso,))
+                    permiso = cursor.fetchone()
+                    if permiso:
+                        try:
+                            cursor.execute('INSERT INTO roles_permisos (rol_id, permiso_id) VALUES (?, ?)',
+                                          (rol[0], permiso[0]))
+                        except sqlite3.IntegrityError:
+                            pass
+        except Exception:
+            pass
 
     # --- MÉTODOS DE USUARIOS ---
 
@@ -206,6 +367,176 @@ class DatabaseManager:
             c = conn.cursor()
             c.execute('SELECT usuario, accion, detalles, fecha FROM logs WHERE fecha >= ? ORDER BY fecha DESC', (inicio,))
             return c.fetchall()
+
+    # === MÉTODOS DE ROLES Y PERMISOS ===
+
+    def obtener_todos_los_roles(self):
+        """Retorna lista de todos los roles con sus permisos."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('SELECT id, nombre, descripcion FROM roles ORDER BY nombre')
+            return c.fetchall()
+
+    def obtener_permisos_de_rol(self, rol_id):
+        """Retorna lista de permisos asignados a un rol."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('''SELECT p.id, p.nombre, p.descripcion, p.categoria 
+                         FROM permisos p
+                         INNER JOIN roles_permisos rp ON p.id = rp.permiso_id
+                         WHERE rp.rol_id = ?''', (rol_id,))
+            return c.fetchall()
+
+    def obtener_permisos_de_usuario(self, usuario_id):
+        """Retorna lista de permisos de un usuario según sus roles."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('''SELECT DISTINCT p.id, p.nombre, p.descripcion, p.categoria 
+                         FROM permisos p
+                         INNER JOIN roles_permisos rp ON p.id = rp.permiso_id
+                         INNER JOIN usuario_roles ur ON rp.rol_id = ur.rol_id
+                         WHERE ur.usuario_id = ?
+                         ORDER BY p.categoria, p.nombre''', (usuario_id,))
+            return c.fetchall()
+
+    def obtener_nombres_permisos_usuario(self, usuario_id):
+        """Retorna solo los nombres de permisos de un usuario."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('''SELECT DISTINCT p.nombre 
+                         FROM permisos p
+                         INNER JOIN roles_permisos rp ON p.id = rp.permiso_id
+                         INNER JOIN usuario_roles ur ON rp.rol_id = ur.rol_id
+                         WHERE ur.usuario_id = ?''', (usuario_id,))
+            result = c.fetchall()
+            return [row[0] for row in result]
+
+    def usuario_tiene_permiso(self, usuario_id, nombre_permiso):
+        """Verifica si un usuario tiene un permiso específico."""
+        permisos = self.obtener_nombres_permisos_usuario(usuario_id)
+        return nombre_permiso in permisos
+
+    def asignar_rol_a_usuario(self, usuario_id, rol_id):
+        """Asigna un rol a un usuario."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            try:
+                fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                c.execute('INSERT INTO usuario_roles (usuario_id, rol_id, fecha_asignacion) VALUES (?, ?, ?)',
+                          (usuario_id, rol_id, fecha))
+                conn.commit()
+                return True
+            except sqlite3.IntegrityError:
+                return False
+
+    def revocar_rol_de_usuario(self, usuario_id, rol_id):
+        """Revoca un rol de un usuario."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('DELETE FROM usuario_roles WHERE usuario_id = ? AND rol_id = ?', (usuario_id, rol_id))
+            conn.commit()
+
+    def obtener_roles_de_usuario(self, usuario_id):
+        """Retorna roles asignados a un usuario."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('''SELECT r.id, r.nombre, r.descripcion, ur.fecha_asignacion 
+                         FROM roles r
+                         INNER JOIN usuario_roles ur ON r.id = ur.rol_id
+                         WHERE ur.usuario_id = ?''', (usuario_id,))
+            return c.fetchall()
+
+    def asignar_permiso_a_rol(self, rol_id, permiso_id):
+        """Asigna un permiso a un rol."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            try:
+                c.execute('INSERT INTO roles_permisos (rol_id, permiso_id) VALUES (?, ?)',
+                          (rol_id, permiso_id))
+                conn.commit()
+                return True
+            except sqlite3.IntegrityError:
+                return False
+
+    def revocar_permiso_de_rol(self, rol_id, permiso_id):
+        """Revoca un permiso de un rol."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('DELETE FROM roles_permisos WHERE rol_id = ? AND permiso_id = ?', (rol_id, permiso_id))
+            conn.commit()
+
+    # === MÉTODOS DE AUDITORÍA DE ACCESOS ===
+
+    def registrar_acceso(self, usuario_id, usuario_nombre, accion, recurso="", resultado="", ip_address="", detalles=""):
+        """Registra un acceso a datos sensibles en auditoría."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                c.execute('''INSERT INTO auditoria_accesos 
+                             (usuario_id, usuario_nombre, accion, recurso, resultado, ip_address, fecha, detalles)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                          (usuario_id, usuario_nombre, accion, recurso, resultado, ip_address, fecha, detalles))
+                conn.commit()
+            except Exception as e:
+                print(f"Error registrando acceso: {e}")
+
+    def obtener_auditoria_accesos(self, filtro_usuario=None, filtro_accion=None, filtro_recurso=None, dias=7):
+        """Retorna registros de auditoría con filtros opcionales."""
+        ahora = datetime.now()
+        inicio = (ahora - timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
+        
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            query = 'SELECT id, usuario_nombre, accion, recurso, resultado, ip_address, fecha, detalles FROM auditoria_accesos WHERE fecha >= ?'
+            params = [inicio]
+            
+            if filtro_usuario:
+                query += ' AND usuario_nombre LIKE ?'
+                params.append(f'%{filtro_usuario}%')
+            
+            if filtro_accion:
+                query += ' AND accion LIKE ?'
+                params.append(f'%{filtro_accion}%')
+            
+            if filtro_recurso:
+                query += ' AND recurso LIKE ?'
+                params.append(f'%{filtro_recurso}%')
+            
+            query += ' ORDER BY fecha DESC'
+            c.execute(query, params)
+            return c.fetchall()
+
+    def obtener_estadisticas_accesos(self, dias=7):
+        """Retorna estadísticas de accesos a datos sensibles."""
+        ahora = datetime.now()
+        inicio = (ahora - timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
+        
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            
+            # Total accesos
+            c.execute('SELECT COUNT(*) FROM auditoria_accesos WHERE fecha >= ?', (inicio,))
+            total = c.fetchone()[0]
+            
+            # Por acción
+            c.execute('SELECT accion, COUNT(*) FROM auditoria_accesos WHERE fecha >= ? GROUP BY accion', (inicio,))
+            por_accion = c.fetchall()
+            
+            # Por usuario
+            c.execute('SELECT usuario_nombre, COUNT(*) FROM auditoria_accesos WHERE fecha >= ? GROUP BY usuario_nombre', (inicio,))
+            por_usuario = c.fetchall()
+            
+            # Accesos rechazados
+            c.execute('SELECT COUNT(*) FROM auditoria_accesos WHERE fecha >= ? AND resultado = "denegado"', (inicio,))
+            denegados = c.fetchone()[0]
+            
+            return {
+                'total': total,
+                'por_accion': por_accion,
+                'por_usuario': por_usuario,
+                'denegados': denegados
+            }
 
 # --- INSTANCIA GLOBAL ---
 directorio_actual = os.path.dirname(os.path.abspath(__file__))
