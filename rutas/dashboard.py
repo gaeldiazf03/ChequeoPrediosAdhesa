@@ -1,7 +1,10 @@
 from flask import Blueprint, render_template, request, session, redirect, url_for
 from database import db
+from services.seguridad import require_permission
 
 dashboard_bp = Blueprint('dashboard', __name__)
+
+# === RUTAS ORIGINALES ===
 
 @dashboard_bp.route('/dashboard')
 def index():
@@ -12,6 +15,13 @@ def index():
     usuarios = db.obtener_todos_los_usuarios() if session.get('rol') == 'admin' else []
     
     return render_template('dashboard.html', slots=slots, usuarios=usuarios, rol_actual=session.get('rol'))
+
+@dashboard_bp.route('/')
+def root_redirect():
+    """Redirige la raíz a dashboard o dashboard-main si no está en sesión."""
+    if not session.get('logeado'):
+        return redirect(url_for('login.index'))
+    return redirect(url_for('dashboard.dashboard_main'))
 
 @dashboard_bp.route('/cargar_kml/<int:slot_id>', methods=['POST'])
 def cargar(slot_id):
@@ -47,6 +57,42 @@ def admin_toggle_permiso(user_id):
 def admin_toggle_edicion(user_id):
     if session.get('rol') == 'admin': db.alternar_permiso(user_id, 'puede_editar')
     return redirect(url_for('dashboard.index'))
+
+# === NUEVAS RUTAS PARA FASE 1 ===
+
+@dashboard_bp.route('/dashboard-main')
+@require_permission('ver_dashboard')
+def dashboard_main():
+    """
+    Dashboard principal mejorado con KPIs, gráficos y timeline.
+    Protegido por: ver_dashboard
+    """
+    if not session.get('logeado'):
+        return redirect(url_for('login.index'))
+    
+    return render_template('dashboard_main.html', usuario=session.get('username'))
+
+@dashboard_bp.route('/dashboard/timeline/<int:slot_id>')
+@require_permission('ver_actividades')
+def timeline_lote(slot_id):
+    """
+    Vista de timeline para un lote específico.
+    Protegido por: ver_actividades
+    """
+    if not session.get('logeado'):
+        return redirect(url_for('login.index'))
+    
+    slot = None
+    for s in db.obtener_todos_los_slots():
+        if s[0] == slot_id:
+            slot = s
+            break
+    
+    if not slot:
+        return render_template('error_404.html'), 404
+    
+    return render_template('timeline.html', slot=slot)
+
 
 @dashboard_bp.route('/admin/toggle_agregar_tareas/<int:user_id>', methods=['POST'])
 def admin_toggle_agregar_tareas(user_id):

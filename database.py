@@ -63,6 +63,24 @@ class DatabaseManager:
                           accion TEXT NOT NULL, recurso TEXT, resultado TEXT,
                           ip_address TEXT, fecha TEXT, detalles TEXT,
                           FOREIGN KEY(usuario_id) REFERENCES usuarios(id))''')
+            
+            # === TABLA DE ACTIVIDADES PROGRAMADAS (FASE 1) ===
+            c.execute('''CREATE TABLE IF NOT EXISTS actividades_programadas
+                         (id INTEGER PRIMARY KEY, 
+                          slot_id INTEGER NOT NULL,
+                          nombre TEXT NOT NULL,
+                          descripcion TEXT,
+                          tipo_actividad TEXT,
+                          estado TEXT DEFAULT 'pendiente',
+                          fecha_programada TEXT,
+                          fecha_vencimiento TEXT,
+                          responsable TEXT,
+                          completada_en TEXT,
+                          dias_desde_siembra INTEGER,
+                          prioridad TEXT DEFAULT 'normal',
+                          metadata_json TEXT,
+                          creada_en TEXT,
+                          FOREIGN KEY(slot_id) REFERENCES slots(id))''')
 
             # Verificación de columnas nuevas (Migración automática)
             c.execute('PRAGMA table_info(usuarios)')
@@ -536,6 +554,152 @@ class DatabaseManager:
                 'por_accion': por_accion,
                 'por_usuario': por_usuario,
                 'denegados': denegados
+            }
+
+    # === MÉTODOS DE ACTIVIDADES PROGRAMADAS (FASE 1) ===
+
+    def crear_actividad(self, slot_id, nombre, descripcion="", tipo_actividad="", 
+                       fecha_programada="", dias_desde_siembra=0, prioridad="normal", responsable=""):
+        """Crea una nueva actividad programada para un slot."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            fecha_creacion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                c.execute('''INSERT INTO actividades_programadas 
+                             (slot_id, nombre, descripcion, tipo_actividad, fecha_programada, 
+                              dias_desde_siembra, prioridad, responsable, creada_en, estado)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                          (slot_id, nombre, descripcion, tipo_actividad, fecha_programada,
+                           dias_desde_siembra, prioridad, responsable, fecha_creacion, 'pendiente'))
+                conn.commit()
+                return c.lastrowid
+            except Exception as e:
+                print(f"Error creando actividad: {e}")
+                return None
+
+    def obtener_actividades_por_slot(self, slot_id, filtro_estado=None):
+        """Obtiene todas las actividades de un slot."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            if filtro_estado:
+                c.execute('''SELECT id, slot_id, nombre, descripcion, tipo_actividad, estado,
+                                    fecha_programada, fecha_vencimiento, responsable, completada_en,
+                                    dias_desde_siembra, prioridad, creada_en
+                             FROM actividades_programadas 
+                             WHERE slot_id = ? AND estado = ?
+                             ORDER BY dias_desde_siembra ASC''', (slot_id, filtro_estado))
+            else:
+                c.execute('''SELECT id, slot_id, nombre, descripcion, tipo_actividad, estado,
+                                    fecha_programada, fecha_vencimiento, responsable, completada_en,
+                                    dias_desde_siembra, prioridad, creada_en
+                             FROM actividades_programadas 
+                             WHERE slot_id = ?
+                             ORDER BY dias_desde_siembra ASC''', (slot_id,))
+            return c.fetchall()
+
+    def obtener_actividades_proximas(self, dias=7):
+        """Obtiene actividades próximas (pendientes en los próximos N días)."""
+        ahora = datetime.now()
+        fecha_limite = (ahora + timedelta(days=dias)).strftime("%Y-%m-%d")
+        
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('''SELECT id, slot_id, nombre, descripcion, tipo_actividad, estado,
+                                fecha_programada, fecha_vencimiento, responsable, completada_en,
+                                dias_desde_siembra, prioridad, creada_en
+                         FROM actividades_programadas 
+                         WHERE estado IN ('pendiente', 'en_progreso')
+                         AND fecha_vencimiento <= ?
+                         ORDER BY fecha_vencimiento ASC''', (fecha_limite,))
+            return c.fetchall()
+
+    def marcar_actividad_completada(self, actividad_id):
+        """Marca una actividad como completada."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            fecha_completada = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            c.execute('''UPDATE actividades_programadas 
+                         SET estado = 'completada', completada_en = ?
+                         WHERE id = ?''', (fecha_completada, actividad_id))
+            conn.commit()
+
+    def cambiar_estado_actividad(self, actividad_id, nuevo_estado):
+        """Cambia el estado de una actividad."""
+        estados_validos = ['pendiente', 'en_progreso', 'completada', 'cancelada']
+        if nuevo_estado not in estados_validos:
+            return False
+        
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            if nuevo_estado == 'completada':
+                fecha_completada = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                c.execute('''UPDATE actividades_programadas 
+                             SET estado = ?, completada_en = ?
+                             WHERE id = ?''', (nuevo_estado, fecha_completada, actividad_id))
+            else:
+                c.execute('''UPDATE actividades_programadas 
+                             SET estado = ?
+                             WHERE id = ?''', (nuevo_estado, actividad_id))
+            conn.commit()
+            return True
+
+    def obtener_actividad_por_id(self, actividad_id):
+        """Obtiene una actividad específica."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('''SELECT id, slot_id, nombre, descripcion, tipo_actividad, estado,
+                                fecha_programada, fecha_vencimiento, responsable, completada_en,
+                                dias_desde_siembra, prioridad, creada_en
+                         FROM actividades_programadas 
+                         WHERE id = ?''', (actividad_id,))
+            return c.fetchone()
+
+    def eliminar_actividad(self, actividad_id):
+        """Elimina una actividad."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('DELETE FROM actividades_programadas WHERE id = ?', (actividad_id,))
+            conn.commit()
+
+    def obtener_estadisticas_actividades(self, slot_id):
+        """Obtiene estadísticas de actividades de un slot."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            
+            c.execute('SELECT COUNT(*) FROM actividades_programadas WHERE slot_id = ?', (slot_id,))
+            total = c.fetchone()[0]
+            
+            c.execute('SELECT COUNT(*) FROM actividades_programadas WHERE slot_id = ? AND estado = "pendiente"', (slot_id,))
+            pendientes = c.fetchone()[0]
+            
+            c.execute('SELECT COUNT(*) FROM actividades_programadas WHERE slot_id = ? AND estado = "en_progreso"', (slot_id,))
+            en_progreso = c.fetchone()[0]
+            
+            c.execute('SELECT COUNT(*) FROM actividades_programadas WHERE slot_id = ? AND estado = "completada"', (slot_id,))
+            completadas = c.fetchone()[0]
+            
+            return {
+                'total': total,
+                'pendientes': pendientes,
+                'en_progreso': en_progreso,
+                'completadas': completadas
+            }
+
+    def obtener_todas_las_actividades_para_kpis(self):
+        """Obtiene todas las actividades para cálculo de KPIs globales."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('''SELECT COUNT(*) as total, 
+                                SUM(CASE WHEN estado = 'pendiente' THEN 1 ELSE 0 END) as pendientes,
+                                SUM(CASE WHEN estado = 'en_progreso' THEN 1 ELSE 0 END) as en_progreso,
+                                SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as completadas
+                         FROM actividades_programadas''')
+            resultado = c.fetchone()
+            return {
+                'total': resultado[0] or 0,
+                'pendientes': resultado[1] or 0,
+                'en_progreso': resultado[2] or 0,
+                'completadas': resultado[3] or 0
             }
 
 # --- INSTANCIA GLOBAL ---
