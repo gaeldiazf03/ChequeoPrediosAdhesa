@@ -58,14 +58,17 @@
         <form action="/admin/crear_usuario" method="POST" class="inline-form">
             <input type="text" name="nuevo_usuario" placeholder="Nombre de usuario" required class="field-input" />
             <input type="password" name="nueva_password" placeholder="Contraseña" required class="field-input" />
+            <input type="email" name="nuevo_correo" placeholder="Correo opcional" class="field-input" />
             <button type="submit" class="btn btn-success btn-auto">+ Crear Usuario</button>
         </form>
+        <p class="panel-help">El correo es opcional. Si se captura, podrá usarse para enviar reportes por email.</p>
 
         <div class="admin-table-container">
         <table class="admin-table">
             <thead>
                 <tr>
                     <th>Usuario</th>
+                    <th>Correo</th>
                     <th>Rol</th>
                     <th class="text-center">Gestión de Lotes</th>
                     <th class="text-center">Gestión de Tareas</th>
@@ -79,6 +82,7 @@
                 {% for u in usuarios %}
                 <tr>
                     <td class="admin-user">{{ u[1] }}</td>
+                    <td class="admin-email">{{ u[11] or 'Sin correo' }}</td>
                     <td class="admin-role">{{ u[2] }}</td>
 
                     {% if u[2] != 'admin' %}
@@ -193,6 +197,16 @@
     {% endif %}
 
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+    <script>
+        (function(){
+            var kmlSaved = '{{ kml_saved or "" }}';
+            if (kmlSaved === '1') {
+                alert('KML subido correctamente.');
+            } else if (kmlSaved === '0') {
+                alert('Error: el KML no pudo guardarse. Revisa el formato.');
+            }
+        })();
+    </script>
 </body>
 
 </html>

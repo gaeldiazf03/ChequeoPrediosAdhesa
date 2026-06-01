@@ -6,6 +6,19 @@ from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 
+def _estado_tarea(tarea):
+	estado = str(tarea.get('estado', '') or '').strip().lower()
+	if estado in ('verde', 'amarillo', 'rojo'):
+		return estado
+	if estado in ('completada', 'completado'):
+		return 'verde'
+	if estado in ('en_progreso', 'en progreso', 'proceso'):
+		return 'amarillo'
+	if tarea.get('completada'):
+		return 'verde'
+	return 'rojo'
+
+
 def generar_csv_logs(logs):
 	si = io.StringIO()
 	cw = csv.writer(si)
@@ -30,7 +43,8 @@ def generar_csv_mapa(data, slot_id):
 				cw.writerow([nombre, resp, 'Sin tareas', '-'])
 			else:
 				for t in tareas:
-					estado = 'Completada' if t.get('completada') else 'Pendiente'
+					estado_norm = _estado_tarea(t)
+					estado = 'Completada' if estado_norm == 'verde' else ('En proceso' if estado_norm == 'amarillo' else 'Pendiente')
 					texto = t.get('texto', '')
 					cw.writerow([nombre, resp, texto, estado])
 
@@ -53,7 +67,7 @@ def generar_word_mapa(data, slot_id):
 		props = f.get('properties', {})
 		tareas = props.get('tareas', [])
 		total_tareas += len(tareas)
-		completadas += sum(1 for t in tareas if t.get('completada'))
+		completadas += sum(1 for t in tareas if _estado_tarea(t) == 'verde')
 		costo_total += float(props.get('costo', 0))
 
 	porcentaje = (completadas / total_tareas * 100) if total_tareas > 0 else 0

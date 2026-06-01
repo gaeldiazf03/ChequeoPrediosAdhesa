@@ -27,7 +27,8 @@ class DatabaseManager:
             # Tabla de Usuarios
             c.execute('''CREATE TABLE IF NOT EXISTS usuarios
                          (id INTEGER PRIMARY KEY, username TEXT UNIQUE, password_hash TEXT,
-                          rol TEXT, puede_agregar INTEGER, ultima_conexion TEXT)''')
+                          rol TEXT, puede_agregar INTEGER, ultima_conexion TEXT,
+                          correo TEXT)''')
 
             # Tabla de Logs (Auditoría)
             c.execute('''CREATE TABLE IF NOT EXISTS logs
@@ -82,6 +83,105 @@ class DatabaseManager:
                           creada_en TEXT,
                           FOREIGN KEY(slot_id) REFERENCES slots(id))''')
 
+            # === TABLAS SMART MAP Y ALERTAS (FASE 2) ===
+            c.execute('''CREATE TABLE IF NOT EXISTS telemetria_maquinaria
+                         (id INTEGER PRIMARY KEY,
+                          slot_id INTEGER NOT NULL,
+                          unidad_id TEXT NOT NULL,
+                          lat REAL NOT NULL,
+                          lng REAL NOT NULL,
+                          velocidad_kmh REAL DEFAULT 0,
+                          estado_motor TEXT DEFAULT 'encendido',
+                          nivel_bateria REAL DEFAULT 100,
+                          timestamp TEXT,
+                          metadata_json TEXT,
+                          FOREIGN KEY(slot_id) REFERENCES slots(id))''')
+
+            c.execute('''CREATE TABLE IF NOT EXISTS alertas_sistema
+                         (id INTEGER PRIMARY KEY,
+                          slot_id INTEGER,
+                          tipo TEXT NOT NULL,
+                          severidad TEXT DEFAULT 'media',
+                          titulo TEXT NOT NULL,
+                          mensaje TEXT,
+                          estado TEXT DEFAULT 'activa',
+                          origen TEXT DEFAULT 'smart_map',
+                          atendida_por TEXT,
+                          creada_en TEXT,
+                          atendida_en TEXT,
+                          metadata_json TEXT,
+                          FOREIGN KEY(slot_id) REFERENCES slots(id))''')
+
+            c.execute('''CREATE TABLE IF NOT EXISTS alertas_reglas
+                         (id INTEGER PRIMARY KEY,
+                          slot_id INTEGER NOT NULL,
+                          nombre TEXT NOT NULL,
+                          tipo TEXT NOT NULL,
+                          umbral REAL NOT NULL,
+                          severidad TEXT DEFAULT 'media',
+                          activa INTEGER DEFAULT 1,
+                          creada_por TEXT,
+                          creada_en TEXT,
+                          actualizada_en TEXT,
+                          FOREIGN KEY(slot_id) REFERENCES slots(id))''')
+
+            c.execute('''CREATE TABLE IF NOT EXISTS tipos_alerta
+                         (id INTEGER PRIMARY KEY,
+                          nombre TEXT UNIQUE NOT NULL,
+                          descripcion TEXT,
+                          activa INTEGER DEFAULT 1,
+                          creada_en TEXT,
+                          actualizada_en TEXT)''')
+
+            # === TABLA DE TRACTORES / UNIDADES (ADMIN CRUD) ===
+            c.execute('''CREATE TABLE IF NOT EXISTS tractores
+                         (id INTEGER PRIMARY KEY,
+                          placa TEXT UNIQUE NOT NULL,
+                          modelo TEXT,
+                          ano INTEGER,
+                          estado TEXT DEFAULT 'activo',
+                          slot_id INTEGER,
+                          metadata_json TEXT,
+                          creada_en TEXT,
+                          actualizada_en TEXT,
+                          FOREIGN KEY(slot_id) REFERENCES slots(id))''')
+
+            # Si en una migración anterior no existía la columna unidad_id, la añadimos
+            c.execute('PRAGMA table_info(tractores)')
+            cols = [r[1] for r in c.fetchall()]
+            if 'unidad_id' not in cols:
+                try:
+                    c.execute('ALTER TABLE tractores ADD COLUMN unidad_id TEXT')
+                except Exception:
+                    pass
+
+            # === TABLA DE PLANES (FUTUROS / PASADOS) ===
+            c.execute('''CREATE TABLE IF NOT EXISTS planes
+                         (id INTEGER PRIMARY KEY,
+                          slot_id INTEGER NOT NULL,
+                          nombre TEXT NOT NULL,
+                          descripcion TEXT,
+                          fecha_inicio TEXT,
+                          fecha_fin TEXT,
+                          estado TEXT DEFAULT 'programado',
+                          creada_en TEXT,
+                          actualizada_en TEXT,
+                          metadata_json TEXT,
+                          FOREIGN KEY(slot_id) REFERENCES slots(id))''')
+
+            c.execute('SELECT COUNT(*) FROM tipos_alerta')
+            if c.fetchone()[0] == 0:
+                ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                tipos_base = [
+                    ('velocidad_mayor', 'Velocidad mayor al umbral configurado'),
+                    ('bateria_menor', 'Nivel de batería menor al umbral configurado'),
+                    ('conexion_perdida', 'Pérdida de comunicación con la unidad'),
+                    ('zona_restringida', 'Unidad fuera de zona permitida'),
+                ]
+                for nombre, descripcion in tipos_base:
+                    c.execute('''INSERT OR IGNORE INTO tipos_alerta (nombre, descripcion, activa, creada_en, actualizada_en)
+                                 VALUES (?, ?, 1, ?, ?)''', (nombre, descripcion, ahora, ahora))
+
             # Verificación de columnas nuevas (Migración automática)
             c.execute('PRAGMA table_info(usuarios)')
             columnas = [col[1] for col in c.fetchall()]
@@ -92,7 +192,8 @@ class DatabaseManager:
                 'puede_marcar_tareas': 'INTEGER DEFAULT 0',
                 'puede_ver_costos': 'INTEGER DEFAULT 0',
                 'puede_descargar_mapa': 'INTEGER DEFAULT 0',
-                'puede_descargar_logs': 'INTEGER DEFAULT 0'
+                'puede_descargar_logs': 'INTEGER DEFAULT 0',
+                'correo': 'TEXT DEFAULT NULL'
             }
             
             for col, tipo in nuevas_columnas.items():
@@ -212,6 +313,46 @@ class DatabaseManager:
             self._asignar_permisos_role(c, 'consultor', permisos_consultor)
             
             conn.commit()
+            
+            # === TABLA DE NOTIFICACIONES ENVIADAS ===
+            c.execute('''CREATE TABLE IF NOT EXISTS notificaciones
+                         (id INTEGER PRIMARY KEY,
+                          slot_id INTEGER,
+                          canal TEXT,
+                          destino TEXT,
+                          tipo TEXT,
+                          titulo TEXT,
+                          mensaje TEXT,
+                          resultado_json TEXT,
+                          creada_en TEXT,
+                          origen TEXT DEFAULT 'alerta',
+                          estado TEXT DEFAULT 'pendiente',
+                          intentos INTEGER DEFAULT 0,
+                          ultimo_intento_en TEXT,
+                          FOREIGN KEY(slot_id) REFERENCES slots(id))''')
+            # Asegurar columnas en migraciones previas
+            c.execute('PRAGMA table_info(notificaciones)')
+            noti_cols = [r[1] for r in c.fetchall()]
+            if 'estado' not in noti_cols:
+                try:
+                    c.execute('ALTER TABLE notificaciones ADD COLUMN estado TEXT DEFAULT "pendiente"')
+                except Exception:
+                    pass
+            if 'intentos' not in noti_cols:
+                try:
+                    c.execute('ALTER TABLE notificaciones ADD COLUMN intentos INTEGER DEFAULT 0')
+                except Exception:
+                    pass
+            if 'origen' not in noti_cols:
+                try:
+                    c.execute('ALTER TABLE notificaciones ADD COLUMN origen TEXT DEFAULT "alerta"')
+                except Exception:
+                    pass
+            if 'ultimo_intento_en' not in noti_cols:
+                try:
+                    c.execute('ALTER TABLE notificaciones ADD COLUMN ultimo_intento_en TEXT')
+                except Exception:
+                    pass
     
     def _asignar_permisos_role_completo(self, cursor, nombre_rol):
         """Asigna todos los permisos a un rol."""
@@ -270,8 +411,17 @@ class DatabaseManager:
         with self._get_connection() as conn:
             c = conn.cursor()
             # Añadimos los nuevos permisos al final para mantener compatibilidad de índices en templates
-            c.execute('SELECT id, username, rol, puede_agregar, ultima_conexion, puede_editar, puede_agregar_tareas, puede_marcar_tareas, puede_ver_costos, puede_descargar_mapa, puede_descargar_logs FROM usuarios')
+            c.execute('SELECT id, username, rol, puede_agregar, ultima_conexion, puede_editar, puede_agregar_tareas, puede_marcar_tareas, puede_ver_costos, puede_descargar_mapa, puede_descargar_logs, correo FROM usuarios')
             return c.fetchall()
+
+    def obtener_correos_usuarios(self):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('''SELECT DISTINCT correo
+                         FROM usuarios
+                         WHERE correo IS NOT NULL AND TRIM(correo) != ''
+                         ORDER BY correo''')
+            return [fila[0] for fila in c.fetchall() if fila and fila[0]]
 
     def alternar_permiso(self, user_id, columna):
         # Añadimos el nuevo permiso a la lista de columnas permitidas
@@ -283,14 +433,15 @@ class DatabaseManager:
             c.execute(f'UPDATE usuarios SET {columna} = CASE WHEN {columna} = 1 THEN 0 ELSE 1 END WHERE id = ? AND rol != "admin"', (user_id,))
             conn.commit()
 
-    def crear_nuevo_usuario(self, username, password):
+    def crear_nuevo_usuario(self, username, password, correo=None):
         with self._get_connection() as conn:
             c = conn.cursor()
             try:
                 pass_hash = generate_password_hash(password)
                 # Añadimos puede_ver_costos y permisos de descarga con valores por defecto
-                c.execute('INSERT INTO usuarios (username, password_hash, rol, puede_agregar, puede_editar, puede_agregar_tareas, puede_marcar_tareas, puede_ver_costos, puede_descargar_mapa, puede_descargar_logs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', 
-                          (username, pass_hash, 'user', 1, 0, 0, 0, 0, 0, 0))
+                correo = (correo or '').strip() or None
+                c.execute('INSERT INTO usuarios (username, password_hash, rol, puede_agregar, puede_editar, puede_agregar_tareas, puede_marcar_tareas, puede_ver_costos, puede_descargar_mapa, puede_descargar_logs, correo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', 
+                          (username, pass_hash, 'user', 1, 0, 0, 0, 0, 0, 0, correo))
                 conn.commit()
             except sqlite3.IntegrityError:
                 pass
@@ -326,8 +477,13 @@ class DatabaseManager:
         with self._get_connection() as conn:
             c = conn.cursor()
             fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
+            # Protección: si por error se recibe una página HTML (traceback del servidor), no la guardamos
+            if isinstance(kml_data, str) and (kml_data.lstrip().lower().startswith('<!doctype') or '<html' in kml_data.lower()):
+                return False
+
             c.execute('UPDATE slots SET kml_data = ?, creado_en = ? WHERE id = ?', (kml_data, fecha, slot_id))
             conn.commit()
+            return True
 
     def vaciar_slot(self, slot_id):
         with self._get_connection() as conn:
@@ -368,6 +524,106 @@ class DatabaseManager:
             fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             c.execute('INSERT INTO logs (usuario, accion, detalles, fecha) VALUES (?, ?, ?, ?)', (usuario, accion, detalles, fecha))
             conn.commit()
+
+    def existe_notificacion_reciente(self, slot_id, canal, tipo, mensaje, ventana_minutos=10):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('''SELECT id, creada_en
+                         FROM notificaciones
+                         WHERE slot_id = ? AND canal = ? AND tipo = ? AND mensaje = ?
+                         ORDER BY creada_en DESC
+                         LIMIT 10''', (slot_id, canal, tipo, mensaje))
+            filas = c.fetchall()
+            if not filas:
+                return None
+            limite_segundos = ventana_minutos * 60
+            ahora = datetime.now()
+            for fila in filas:
+                try:
+                    creada = datetime.strptime(fila[1], "%Y-%m-%d %H:%M:%S")
+                    if (ahora - creada).total_seconds() <= limite_segundos:
+                        return fila
+                except Exception:
+                    continue
+            return None
+
+    def crear_notificacion(self, slot_id, canal, destino, tipo, titulo, mensaje, resultado_json='', origen='alerta', forzar=False, cooldown_minutos=10):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            creada_en = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                if not forzar:
+                    reciente = self.existe_notificacion_reciente(slot_id, canal, tipo, mensaje, cooldown_minutos)
+                    if reciente:
+                        return reciente[0]
+                c.execute('''INSERT INTO notificaciones (slot_id, canal, destino, tipo, titulo, mensaje, resultado_json, creada_en, origen, ultimo_intento_en)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                          (slot_id, canal, destino, tipo, titulo, mensaje, resultado_json, creada_en, origen, None))
+                conn.commit()
+                return c.lastrowid
+            except Exception:
+                return None
+
+    def obtener_notificacion_por_id(self, notificacion_id):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('''SELECT id, slot_id, canal, destino, tipo, titulo, mensaje, resultado_json, creada_en, origen, estado, intentos, ultimo_intento_en
+                         FROM notificaciones WHERE id = ?''', (notificacion_id,))
+            return c.fetchone()
+
+    def actualizar_notificacion_resultado(self, notificacion_id, resultado_json, nuevo_estado=None, incrementar_intentos=False, actualizar_ultimo_intento=True):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            campos = []
+            params = []
+            campos.append('resultado_json = ?')
+            params.append(resultado_json)
+            if nuevo_estado is not None:
+                campos.append('estado = ?')
+                params.append(nuevo_estado)
+            if incrementar_intentos:
+                campos.append('intentos = intentos + 1')
+            if actualizar_ultimo_intento:
+                campos.append('ultimo_intento_en = ?')
+                params.append(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            params.append(notificacion_id)
+            query = f"UPDATE notificaciones SET {', '.join(campos)} WHERE id = ?"
+            c.execute(query, tuple(params))
+            conn.commit()
+            return c.rowcount > 0
+
+    def obtener_notificaciones_por_slot(self, slot_id, limite=100, canal=None, estado=None, desde=None, hasta=None):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            query = '''SELECT id, slot_id, canal, destino, tipo, titulo, mensaje, resultado_json, creada_en, origen, estado, intentos, ultimo_intento_en
+                       FROM notificaciones WHERE slot_id = ?'''
+            params = [slot_id]
+            if canal:
+                query += ' AND canal = ?'
+                params.append(canal)
+            if estado:
+                query += ' AND estado = ?'
+                params.append(estado)
+            if desde:
+                query += ' AND creada_en >= ?'
+                params.append(desde)
+            if hasta:
+                query += ' AND creada_en <= ?'
+                params.append(hasta)
+            query += ' ORDER BY creada_en DESC LIMIT ?'
+            params.append(limite)
+            c.execute(query, tuple(params))
+            return c.fetchall()
+
+    def obtener_notificaciones_para_reintento(self, max_intentos=3, limite=50):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('''SELECT id, slot_id, canal, destino, tipo, titulo, mensaje, resultado_json, creada_en, origen, estado, intentos, ultimo_intento_en
+                         FROM notificaciones
+                         WHERE estado = 'fallo' AND intentos < ?
+                         ORDER BY creada_en ASC
+                         LIMIT ?''', (max_intentos, limite))
+            return c.fetchall()
 
     def obtener_logs_por_rango(self, rango):
         ahora = datetime.now()
@@ -613,6 +869,175 @@ class DatabaseManager:
                          ORDER BY fecha_vencimiento ASC''', (fecha_limite,))
             return c.fetchall()
 
+        # === MÉTODOS DE GESTIÓN DE TRACTORES ===
+
+        def crear_tractor(self, placa, modelo=None, ano=None, estado='activo', slot_id=None, metadata_json=''):
+            """Crea un registro de tractor/unidad."""
+            with self._get_connection() as conn:
+                c = conn.cursor()
+                ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                try:
+                    c.execute('''INSERT INTO tractores (placa, modelo, ano, estado, slot_id, metadata_json, creada_en, actualizada_en)
+                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                              (placa, modelo, ano, estado, slot_id, metadata_json, ahora, ahora))
+                    conn.commit()
+                    return c.lastrowid
+                except sqlite3.IntegrityError:
+                    return None
+
+        def obtener_todos_los_tractores(self, slot_id=None):
+            """Retorna lista de tractores, opcionalmente filtrados por slot."""
+            with self._get_connection() as conn:
+                c = conn.cursor()
+                if slot_id is None:
+                    c.execute('SELECT id, placa, modelo, ano, estado, slot_id, metadata_json, creada_en, actualizada_en FROM tractores ORDER BY id DESC')
+                else:
+                    c.execute('SELECT id, placa, modelo, ano, estado, slot_id, metadata_json, creada_en, actualizada_en FROM tractores WHERE slot_id = ? ORDER BY id DESC', (slot_id,))
+                return c.fetchall()
+
+        def obtener_tractor_por_id(self, tractor_id):
+            with self._get_connection() as conn:
+                c = conn.cursor()
+                c.execute('SELECT id, placa, modelo, ano, estado, slot_id, metadata_json, creada_en, actualizada_en FROM tractores WHERE id = ?', (tractor_id,))
+                return c.fetchone()
+
+        def actualizar_tractor(self, tractor_id, placa=None, modelo=None, ano=None, estado=None, slot_id=None, metadata_json=None):
+            """Actualiza campos proporcionados de un tractor."""
+            campos = []
+            params = []
+            if placa is not None:
+                campos.append('placa = ?')
+                params.append(placa)
+            if modelo is not None:
+                campos.append('modelo = ?')
+                params.append(modelo)
+            if ano is not None:
+                campos.append('ano = ?')
+                params.append(ano)
+            if estado is not None:
+                campos.append('estado = ?')
+                params.append(estado)
+            if slot_id is not None:
+                campos.append('slot_id = ?')
+                params.append(slot_id)
+            if metadata_json is not None:
+                campos.append('metadata_json = ?')
+                params.append(metadata_json)
+
+            if not campos:
+                return False
+
+            ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            campos.append('actualizada_en = ?')
+            params.append(ahora)
+            params.append(tractor_id)
+
+            with self._get_connection() as conn:
+                c = conn.cursor()
+                query = f"UPDATE tractores SET {', '.join(campos)} WHERE id = ?"
+                c.execute(query, tuple(params))
+                conn.commit()
+                return c.rowcount > 0
+
+        def eliminar_tractor(self, tractor_id):
+            with self._get_connection() as conn:
+                c = conn.cursor()
+                c.execute('DELETE FROM tractores WHERE id = ?', (tractor_id,))
+                conn.commit()
+                return c.rowcount > 0
+
+        def vincular_tractor(self, tractor_id, unidad_id):
+            """Asigna un unidad_id a un tractor (vinculación manual)."""
+            with self._get_connection() as conn:
+                c = conn.cursor()
+                ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                try:
+                    c.execute('UPDATE tractores SET unidad_id = ?, actualizada_en = ? WHERE id = ?', (unidad_id, ahora, tractor_id))
+                    conn.commit()
+                    return c.rowcount > 0
+                except Exception:
+                    return False
+
+        def desvincular_tractor(self, tractor_id):
+            with self._get_connection() as conn:
+                c = conn.cursor()
+                ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                c.execute('UPDATE tractores SET unidad_id = NULL, actualizada_en = ? WHERE id = ?', (ahora, tractor_id))
+                conn.commit()
+                return c.rowcount > 0
+
+        def obtener_tractor_por_unidad(self, unidad_id):
+            with self._get_connection() as conn:
+                c = conn.cursor()
+                c.execute('SELECT id, placa, modelo, ano, estado, slot_id, metadata_json, unidad_id, creada_en, actualizada_en FROM tractores WHERE unidad_id = ?', (unidad_id,))
+                return c.fetchone()
+
+        # === MÉTODOS DE GESTIÓN DE PLANES ===
+
+        def crear_plan(self, slot_id, nombre, descripcion='', fecha_inicio=None, fecha_fin=None, estado='programado', metadata_json=''):
+            with self._get_connection() as conn:
+                c = conn.cursor()
+                ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                try:
+                    c.execute('''INSERT INTO planes (slot_id, nombre, descripcion, fecha_inicio, fecha_fin, estado, creada_en, actualizada_en, metadata_json)
+                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                              (slot_id, nombre, descripcion, fecha_inicio, fecha_fin, estado, ahora, ahora, metadata_json))
+                    conn.commit()
+                    return c.lastrowid
+                except Exception:
+                    return None
+
+        def obtener_planes_por_slot(self, slot_id):
+            with self._get_connection() as conn:
+                c = conn.cursor()
+                c.execute('''SELECT id, slot_id, nombre, descripcion, fecha_inicio, fecha_fin, estado, creada_en, actualizada_en, metadata_json
+                             FROM planes WHERE slot_id = ? ORDER BY fecha_inicio DESC''', (slot_id,))
+                return c.fetchall()
+
+        def obtener_plan_por_id(self, plan_id):
+            with self._get_connection() as conn:
+                c = conn.cursor()
+                c.execute('''SELECT id, slot_id, nombre, descripcion, fecha_inicio, fecha_fin, estado, creada_en, actualizada_en, metadata_json
+                             FROM planes WHERE id = ?''', (plan_id,))
+                return c.fetchone()
+
+        def actualizar_plan(self, plan_id, nombre=None, descripcion=None, fecha_inicio=None, fecha_fin=None, estado=None, metadata_json=None):
+            campos = []
+            params = []
+            if nombre is not None:
+                campos.append('nombre = ?'); params.append(nombre)
+            if descripcion is not None:
+                campos.append('descripcion = ?'); params.append(descripcion)
+            if fecha_inicio is not None:
+                campos.append('fecha_inicio = ?'); params.append(fecha_inicio)
+            if fecha_fin is not None:
+                campos.append('fecha_fin = ?'); params.append(fecha_fin)
+            if estado is not None:
+                campos.append('estado = ?'); params.append(estado)
+            if metadata_json is not None:
+                campos.append('metadata_json = ?'); params.append(metadata_json)
+
+            if not campos:
+                return False
+
+            ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            campos.append('actualizada_en = ?'); params.append(ahora)
+            params.append(plan_id)
+
+            with self._get_connection() as conn:
+                c = conn.cursor()
+                query = f"UPDATE planes SET {', '.join(campos)} WHERE id = ?"
+                c.execute(query, tuple(params))
+                conn.commit()
+                return c.rowcount > 0
+
+        def eliminar_plan(self, plan_id):
+            with self._get_connection() as conn:
+                c = conn.cursor()
+                c.execute('DELETE FROM planes WHERE id = ?', (plan_id,))
+                conn.commit()
+                return c.rowcount > 0
+
     def marcar_actividad_completada(self, actividad_id):
         """Marca una actividad como completada."""
         with self._get_connection() as conn:
@@ -701,6 +1126,177 @@ class DatabaseManager:
                 'en_progreso': resultado[2] or 0,
                 'completadas': resultado[3] or 0
             }
+
+    # === MÉTODOS SMART MAP Y ALERTAS (FASE 2) ===
+
+    def insertar_telemetria(self, slot_id, unidad_id, lat, lng, velocidad_kmh=0,
+                            estado_motor='encendido', nivel_bateria=100, metadata_json=''):
+        """Inserta un punto de telemetría para una unidad."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            marca_tiempo = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            c.execute('''INSERT INTO telemetria_maquinaria
+                         (slot_id, unidad_id, lat, lng, velocidad_kmh, estado_motor,
+                          nivel_bateria, timestamp, metadata_json)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                      (slot_id, unidad_id, lat, lng, velocidad_kmh, estado_motor,
+                       nivel_bateria, marca_tiempo, metadata_json))
+            conn.commit()
+            return c.lastrowid
+
+    def obtener_ultima_posicion_unidades(self, slot_id):
+        """Obtiene la última posición registrada por cada unidad del slot."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('''SELECT t.id, t.slot_id, t.unidad_id, t.lat, t.lng, t.velocidad_kmh,
+                                t.estado_motor, t.nivel_bateria, t.timestamp, t.metadata_json
+                         FROM telemetria_maquinaria t
+                         INNER JOIN (
+                            SELECT unidad_id, MAX(timestamp) AS max_ts
+                            FROM telemetria_maquinaria
+                            WHERE slot_id = ?
+                            GROUP BY unidad_id
+                         ) ult
+                         ON t.unidad_id = ult.unidad_id AND t.timestamp = ult.max_ts
+                         WHERE t.slot_id = ?
+                         ORDER BY t.unidad_id ASC''', (slot_id, slot_id))
+            return c.fetchall()
+
+    def obtener_unidades_con_ultima_posicion(self, slot_id):
+        """Retorna lista de unidades con su última posición y datos de tractor si existe."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('''SELECT t.unidad_id, t.lat, t.lng, t.velocidad_kmh, t.estado_motor, t.nivel_bateria, t.timestamp,
+                                tr.id as tractor_id, tr.placa, tr.modelo
+                         FROM telemetria_maquinaria t
+                         LEFT JOIN tractores tr ON tr.placa = t.unidad_id
+                         INNER JOIN (
+                            SELECT unidad_id, MAX(timestamp) AS max_ts
+                            FROM telemetria_maquinaria
+                            WHERE slot_id = ?
+                            GROUP BY unidad_id
+                         ) ult
+                         ON t.unidad_id = ult.unidad_id AND t.timestamp = ult.max_ts
+                         WHERE t.slot_id = ?
+                         ORDER BY t.unidad_id ASC''', (slot_id, slot_id))
+            return c.fetchall()
+
+    def crear_alerta(self, slot_id, tipo, titulo, mensaje, severidad='media', metadata_json=''):
+        """Crea una alerta del sistema."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            creada_en = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            c.execute('''INSERT INTO alertas_sistema
+                         (slot_id, tipo, severidad, titulo, mensaje, estado, origen, creada_en, metadata_json)
+                         VALUES (?, ?, ?, ?, ?, 'activa', 'smart_map', ?, ?)''',
+                      (slot_id, tipo, severidad, titulo, mensaje, creada_en, metadata_json))
+            conn.commit()
+            return c.lastrowid
+
+    def obtener_alertas_activas(self, slot_id=None, limite=20):
+        """Obtiene alertas activas, opcionalmente filtradas por slot."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            if slot_id is None:
+                c.execute('''SELECT id, slot_id, tipo, severidad, titulo, mensaje, estado,
+                                    origen, atendida_por, creada_en, atendida_en, metadata_json
+                             FROM alertas_sistema
+                             WHERE estado = 'activa'
+                             ORDER BY creada_en DESC
+                             LIMIT ?''', (limite,))
+            else:
+                c.execute('''SELECT id, slot_id, tipo, severidad, titulo, mensaje, estado,
+                                    origen, atendida_por, creada_en, atendida_en, metadata_json
+                             FROM alertas_sistema
+                             WHERE estado = 'activa' AND slot_id = ?
+                             ORDER BY creada_en DESC
+                             LIMIT ?''', (slot_id, limite))
+            return c.fetchall()
+
+    def atender_alerta(self, alerta_id, atendida_por=''):
+        """Marca una alerta como atendida."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            atendida_en = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            c.execute('''UPDATE alertas_sistema
+                         SET estado = 'atendida', atendida_por = ?, atendida_en = ?
+                         WHERE id = ?''', (atendida_por, atendida_en, alerta_id))
+            conn.commit()
+            return c.rowcount > 0
+
+    def obtener_reglas_alerta(self, slot_id, solo_activas=False):
+        """Obtiene reglas de alerta configuradas para un lote."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            if solo_activas:
+                c.execute('''SELECT id, slot_id, nombre, tipo, umbral, severidad, activa,
+                                    creada_por, creada_en, actualizada_en
+                             FROM alertas_reglas
+                             WHERE slot_id = ? AND activa = 1
+                             ORDER BY id DESC''', (slot_id,))
+            else:
+                c.execute('''SELECT id, slot_id, nombre, tipo, umbral, severidad, activa,
+                                    creada_por, creada_en, actualizada_en
+                             FROM alertas_reglas
+                             WHERE slot_id = ?
+                             ORDER BY id DESC''', (slot_id,))
+            return c.fetchall()
+
+    def crear_regla_alerta(self, slot_id, nombre, tipo, umbral, severidad='media', creada_por=''):
+        """Crea una regla de alerta para un lote."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            c.execute('''INSERT INTO alertas_reglas
+                         (slot_id, nombre, tipo, umbral, severidad, activa, creada_por, creada_en, actualizada_en)
+                         VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)''',
+                      (slot_id, nombre, tipo, umbral, severidad, creada_por, ahora, ahora))
+            conn.commit()
+            return c.lastrowid
+
+    def actualizar_estado_regla_alerta(self, regla_id, activa):
+        """Activa o desactiva una regla de alerta."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            c.execute('''UPDATE alertas_reglas
+                         SET activa = ?, actualizada_en = ?
+                         WHERE id = ?''', (1 if activa else 0, ahora, regla_id))
+            conn.commit()
+            return c.rowcount > 0
+
+    def obtener_tipos_alerta(self, solo_activos=False):
+        """Obtiene el catálogo de tipos de alerta."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            if solo_activos:
+                c.execute('''SELECT id, nombre, descripcion, activa, creada_en, actualizada_en
+                             FROM tipos_alerta
+                             WHERE activa = 1
+                             ORDER BY nombre ASC''')
+            else:
+                c.execute('''SELECT id, nombre, descripcion, activa, creada_en, actualizada_en
+                             FROM tipos_alerta
+                             ORDER BY nombre ASC''')
+            return c.fetchall()
+
+    def crear_tipo_alerta(self, nombre, descripcion=""):
+        """Crea un nuevo tipo de alerta."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            c.execute('''INSERT INTO tipos_alerta (nombre, descripcion, activa, creada_en, actualizada_en)
+                         VALUES (?, ?, 1, ?, ?)''', (nombre, descripcion, ahora, ahora))
+            conn.commit()
+            return c.lastrowid
+
+    def eliminar_tipo_alerta(self, tipo_alerta_id):
+        """Elimina un tipo de alerta del catálogo."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('DELETE FROM tipos_alerta WHERE id = ?', (tipo_alerta_id,))
+            conn.commit()
+            return c.rowcount > 0
 
 # --- INSTANCIA GLOBAL ---
 directorio_actual = os.path.dirname(os.path.abspath(__file__))

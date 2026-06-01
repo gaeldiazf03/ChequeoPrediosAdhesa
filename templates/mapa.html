@@ -28,8 +28,92 @@
         {% endif %}
 
         <button onclick="descargarReporte(this)" class="map-button map-button-info">📄 Descargar Avances</button>
+        {% if puede_descargar_mapa %}
+        <button onclick="enviarReportePorCorreo(this)" class="map-button map-button-warning">📧 Enviar por correo</button>
+        {% endif %}
         <button onclick="exportarKML()" class="map-button map-button-primary">Exportar a KML</button>
+        <!-- Botones de análisis manual removidos: asignación ocurre automáticamente al guardar/subir KML -->
     </div>
+
+    <section class="smartmap-panel">
+        <div class="smartmap-panel-header">
+            <h3>Smart Map en Vivo</h3>
+            <div class="smartmap-actions-row">
+                <button id="btnSimularSmartMap" onclick="simularMovimientoSmartMap(this)" class="map-button map-button-warning">
+                    Simular Telemetría
+                </button>
+                <button id="btnPruebaCorreo" onclick="probarCorreoSmartMap(this)" class="map-button map-button-info">
+                    Probar Correo
+                </button>
+            </div>
+        </div>
+        <div class="smartmap-kpis">
+            <div class="smartmap-kpi-item">
+                <span class="smartmap-kpi-label">Unidades activas</span>
+                <strong id="smartmap-kpi-unidades">0</strong>
+            </div>
+            <div class="smartmap-kpi-item">
+                <span class="smartmap-kpi-label">Velocidad promedio</span>
+                <strong id="smartmap-kpi-velocidad">0 km/h</strong>
+            </div>
+            <div class="smartmap-kpi-item">
+                <span class="smartmap-kpi-label">Alertas activas</span>
+                <strong id="smartmap-kpi-alertas">0</strong>
+            </div>
+            <div class="smartmap-kpi-item">
+                <span class="smartmap-kpi-label">Última actualización</span>
+                <strong id="smartmap-kpi-updated">--</strong>
+            </div>
+        </div>
+        <div id="smartmap-alertas-lista" class="smartmap-alertas-lista">
+            <p class="smartmap-empty">Cargando alertas...</p>
+        </div>
+
+        <hr class="smartmap-divider">
+
+        <div class="smartmap-panel-header">
+            <h3>Reglas de Alertas</h3>
+        </div>
+
+        <form class="smartmap-reglas-form" onsubmit="crearReglaSmartMap(event)">
+            <input id="regla-nombre" type="text" placeholder="Nombre de regla" required>
+            <select id="regla-tipo" required>
+                <option value="velocidad_mayor">Velocidad mayor que</option>
+                <option value="bateria_menor">Batería menor que</option>
+            </select>
+            <input id="regla-umbral" type="number" step="0.1" placeholder="Umbral" required>
+            <select id="regla-severidad" required>
+                <option value="baja">Baja</option>
+                <option value="media" selected>Media</option>
+                <option value="alta">Alta</option>
+            </select>
+            <button id="btnCrearRegla" class="map-button map-button-info" type="submit">Crear Regla</button>
+        </form>
+
+        <div id="smartmap-reglas-lista" class="smartmap-reglas-lista">
+            <p class="smartmap-empty">Cargando reglas...</p>
+        </div>
+
+        {% if es_admin %}
+        <hr class="smartmap-divider">
+
+        <div class="smartmap-panel-header">
+            <h3>Tipos de Alerta</h3>
+        </div>
+
+        <form class="smartmap-reglas-form" onsubmit="crearTipoAlerta(event)">
+            <input id="tipo-alerta-nombre" type="text" placeholder="Nombre del tipo de alerta" required>
+            <input id="tipo-alerta-descripcion" type="text" placeholder="Descripción">
+            <div></div>
+            <div></div>
+            <button id="btnCrearTipoAlerta" class="map-button map-button-info" type="submit">Crear Tipo</button>
+        </form>
+
+        <div id="tipos-alerta-lista" class="smartmap-reglas-lista">
+            <p class="smartmap-empty">Cargando tipos de alerta...</p>
+        </div>
+        {% endif %}
+    </section>
 
     <div id="map" data-slot-id="{{ slot_id }}" data-puede-agregar="{{ puede_agregar|lower }}"
         data-puede-editar="{{ puede_editar|lower }}" data-es-admin="{{ es_admin|lower }}"
@@ -37,15 +121,18 @@
         data-puede-agregar-tareas="{{ puede_agregar_tareas|lower }}" data-usuario-actual="{{ usuario_actual }}"
         data-usuarios-lista="{{ usuarios_lista_json }}" data-puede-ver-costos="{{ puede_ver_costos|lower }}"
         data-puede-descargar-mapa="{{ puede_descargar_mapa|lower }}"
-        data-puede-descargar-logs="{{ puede_descargar_logs|lower }}"></div>
+        data-puede-descargar-logs="{{ puede_descargar_logs|lower }}"
+        data-puede-ver-alertas="{{ puede_ver_alertas|lower }}"></div>
 
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
     <script src="https://api.mapbox.com/mapbox.js/plugins/leaflet-omnivore/v0.3.1/leaflet-omnivore.min.js"></script>
+    <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
 
     <script src="{{ url_for('static', filename='js/mapa.js') }}"></script>
     <script src="{{ url_for('static', filename='js/mapa_autoguardado.js') }}"></script>
     <script src="{{ url_for('static', filename='js/mapa_vigilancia.js') }}"></script>
+
 </body>
 
 </html>

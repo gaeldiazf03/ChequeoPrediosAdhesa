@@ -1,0 +1,64 @@
+{% extends 'dashboard_main.html' %}
+
+{% block title %}Historial de notificaciones{% endblock %}
+
+{% block content %}
+<div class="container">
+  <h2>Historial de notificaciones</h2>
+  <div>
+    <label for="slotSelectNot">Slot:</label>
+    <select id="slotSelectNot"></select>
+    <button id="cargarNotBtn">Cargar</button>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;align-items:end;">
+    <div>
+      <label for="filtroCanal">Canal</label><br>
+      <select id="filtroCanal">
+        <option value="">Todos</option>
+        <option value="telegram">Telegram</option>
+        <option value="whatsapp">WhatsApp</option>
+        <option value="email">Email</option>
+      </select>
+    </div>
+    <div>
+      <label for="filtroEstado">Estado</label><br>
+      <select id="filtroEstado">
+        <option value="">Todos</option>
+        <option value="pendiente">Pendiente</option>
+        <option value="enviado">Enviado</option>
+        <option value="fallo">Fallo</option>
+      </select>
+    </div>
+    <div>
+      <label for="filtroDesde">Desde</label><br>
+      <input id="filtroDesde" type="date">
+    </div>
+    <div>
+      <label for="filtroHasta">Hasta</label><br>
+      <input id="filtroHasta" type="date">
+    </div>
+    <button id="aplicarFiltrosBtn" type="button">Aplicar filtros</button>
+  </div>
+  <table id="notTable" class="table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Estado</th>
+        <th>Intentos</th>
+        <th>Origen</th>
+        <th>Canal</th>
+        <th>Destino</th>
+        <th>Tipo</th>
+        <th>Título</th>
+        <th>Mensaje</th>
+        <th>Resultado</th>
+        <th>Fecha</th>
+        <th>Último intento</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+<script src="/static/js/admin_notificaciones.js"></script>
+{% endblock %}

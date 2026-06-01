@@ -118,6 +118,12 @@ def obtener_slots_info():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
+@actividades_bp.route('/slots', methods=['GET'])
+def obtener_slots_alias():
+    """Alias por compatibilidad con versiones anteriores: /api/slots -> /api/slots-info"""
+    return obtener_slots_info()
+
 # === ENDPOINTS DE TIMELINE AUTOMÁTICO ===
 
 @actividades_bp.route('/actividades/generar-cronograma/<int:slot_id>', methods=['POST'])

@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, session, redirect, url_for
 from database import db
 from services.seguridad import require_permission
+from utils.funciones import convertir_kml_a_geojson, convertir_geojson_a_kml
 
 dashboard_bp = Blueprint('dashboard', __name__)
 
@@ -13,8 +14,9 @@ def index():
     
     slots = db.obtener_todos_los_slots()
     usuarios = db.obtener_todos_los_usuarios() if session.get('rol') == 'admin' else []
-    
-    return render_template('dashboard.html', slots=slots, usuarios=usuarios, rol_actual=session.get('rol'))
+    # Passthrough para mostrar resultado de carga KML (diagnóstico rápido)
+    kml_saved = request.args.get('kml_saved')
+    return render_template('dashboard.html', slots=slots, usuarios=usuarios, rol_actual=session.get('rol'), kml_saved=kml_saved)
 
 @dashboard_bp.route('/')
 def root_redirect():
@@ -29,9 +31,41 @@ def cargar(slot_id):
     
     archivo = request.files.get('kml_file')
     if archivo and archivo.filename.endswith('.kml'):
-        db.guardar_kml_en_slot(slot_id, archivo.read().decode('utf-8', errors='replace'))
-        db.registrar_log(session.get('usuario'), "Carga KML", f"Slot ID: {slot_id}")
-    
+        content = archivo.read()
+        try:
+            text = content.decode('utf-8', errors='replace')
+        except Exception:
+            text = str(content)
+        # Intentar convertir KML a GeoJSON para ejecutar la asignación automática de padres
+        try:
+            geo = convertir_kml_a_geojson(text)
+        except Exception:
+            geo = None
+
+        if geo:
+            try:
+                # asignar padres en servidor (método importado desde rutas.mapa no disponible aquí),
+                # usar la conversión y volver a generar KML para persistir
+                from rutas.mapa import _asignar_padres_geojson_inplace
+                from rutas.mapa import _asegurar_tareas_padre_geojson_inplace
+                try:
+                    _asignar_padres_geojson_inplace(geo)
+                    _asegurar_tareas_padre_geojson_inplace(geo)
+                except Exception:
+                    pass
+                new_kml = convertir_geojson_a_kml(geo)
+                saved = db.guardar_kml_en_slot(slot_id, new_kml)
+            except Exception:
+                # en caso de fallo al convertir/guardar, guardar el KML original
+                saved = db.guardar_kml_en_slot(slot_id, text)
+        else:
+            saved = db.guardar_kml_en_slot(slot_id, text)
+        db.registrar_log(session.get('usuario'), "Carga KML", f"Slot ID: {slot_id}, filename:{archivo.filename}, size:{len(content)}, saved:{bool(saved)}")
+        if saved:
+            return redirect(url_for('dashboard.index', kml_saved='1'))
+        else:
+            return redirect(url_for('dashboard.index', kml_saved='0'))
+
     return redirect(url_for('dashboard.index'))
 
 @dashboard_bp.route('/eliminar_kml/<int:slot_id>', methods=['POST'])
@@ -111,8 +145,9 @@ def crear_usuario():
         # Cambiado 'nuevo_username' por 'nuevo_usuario' para coincidir con el HTML
         username = request.form.get('nuevo_usuario') 
         password = request.form.get('nueva_password')
+        correo = request.form.get('nuevo_correo', '').strip() or None
         if username and password:
-            db.crear_nuevo_usuario(username, password)
+            db.crear_nuevo_usuario(username, password, correo=correo)
             db.registrar_log(session.get('usuario'), "Crear Usuario", f"Usuario: {username}")
     return redirect(url_for('dashboard.index'))
 

@@ -497,6 +497,25 @@
     <div class="dashboard-header">
         <h1>🌾 Dashboard - Centro de Control</h1>
         <div class="header-actions">
+            {% if session.get('es_admin') %}
+            <div class="dropdown" style="position:relative;">
+                <a class="btn btn-secondary" href="#" id="adminMenu">Admin ▾</a>
+                <div style="position:absolute;right:0;top:38px;background:white;border:1px solid #e5e7eb;border-radius:6px;padding:8px;display:none;min-width:180px;z-index:200;" id="adminDropdown">
+                    <a href="/admin/tractores" style="display:block;padding:6px 8px;color:#1f2937;text-decoration:none;">Tractores</a>
+                    <a href="/admin/planes" style="display:block;padding:6px 8px;color:#1f2937;text-decoration:none;">Planes</a>
+                    <a href="/admin/roles" style="display:block;padding:6px 8px;color:#1f2937;text-decoration:none;">Roles / Permisos</a>
+                </div>
+            </div>
+            <script>
+                document.addEventListener('click', function(e){
+                    const btn = document.getElementById('adminMenu');
+                    const dd = document.getElementById('adminDropdown');
+                    if(!btn) return;
+                    if(e.target === btn){ dd.style.display = dd.style.display === 'block' ? 'none' : 'block'; }
+                    else if(!dd.contains(e.target)) { dd.style.display = 'none'; }
+                });
+            </script>
+            {% endif %}
             <a href="/logout" class="btn btn-secondary">Cerrar Sesión</a>
         </div>
     </div>

@@ -1,5 +1,19 @@
 // Autoguardado y guardado manual extraído desde mapa.js
 var guardando = typeof guardando !== 'undefined' ? guardando : false;
+var _temporizadorGuardado = null;
+
+function registrarCambio() {
+    cambiosPendientes = true;
+    actualizarEstado('Cambios pendientes');
+
+    if (_temporizadorGuardado) {
+        clearTimeout(_temporizadorGuardado);
+    }
+
+    _temporizadorGuardado = setTimeout(function () {
+        guardarAutomaticamente();
+    }, 1200);
+}
 
 function guardarAutomaticamente() {
     if (!slotId || !cambiosPendientes || guardando) return;

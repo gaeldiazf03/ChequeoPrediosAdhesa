@@ -63,6 +63,7 @@ def index():
             session.update({
                 'logeado': True, 
                 'username': username,
+                'usuario': username,
                 'user_id': user_id,
                 'rol': rol,
                 'puede_agregar': add, 
