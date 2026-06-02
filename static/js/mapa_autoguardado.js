@@ -62,4 +62,4 @@ function guardarManual() {
 }
 
 // Activar autoguardado periódico
-setInterval(guardarAutomaticamente, 60000);
+setInterval(guardarAutomaticamente, 300000);

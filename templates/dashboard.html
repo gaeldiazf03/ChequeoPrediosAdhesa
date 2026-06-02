@@ -3,14 +3,14 @@
 
 <head>
     <meta charset="UTF-8" />
-    <title>Dashboard - Selección de KML</title>
+    <title>Dashboard - Selección Mapa</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
 </head>
 
 <body>
     <div id="spinnerCarga" class="spinner-overlay">
         <div class="spinner-ring"></div>
-        <p class="spinner-text">Cargando KML, por favor espera...</p>
+        <p class="spinner-text">Cargando mapa, por favor espera...</p>
     </div>
 
     <h1>Selecciona un Slot de Trabajo</h1>
@@ -25,7 +25,7 @@
 
             {% if slot[3] %}
             <a href="/adhesa/{{ slot[2] }}" class="btn">Abrir {{ slot[1] }}</a>
-            <button onclick="abrirModal('{{ slot[0] }}')" class="btn btn-delete">Eliminar KML</button>
+            <button onclick="abrirModal('{{ slot[0] }}')" class="btn btn-delete">Eliminar mapa</button>
 
             <div class="metadata">
                 <p><strong>Creado:</strong> {{ slot[4] }}</p>
@@ -35,7 +35,7 @@
             <p class="slot-empty">Slot Vacío</p>
 
             <form action="/cargar_kml/{{ slot[0] }}" method="POST" enctype="multipart/form-data">
-                <label for="upload-{{ slot[0] }}" class="btn btn-empty">Cargar Nuevo KML</label>
+                <label for="upload-{{ slot[0] }}" class="btn btn-empty">Cargar Nuevo Mapa</label>
                 <input id="upload-{{ slot[0] }}" type="file" name="kml_file" accept=".kml" hidden
                     onchange="mostrarSpinnerYEnviar(this)" />
             </form>
@@ -131,8 +131,12 @@
 
                     <td class="text-right">
                         <div class="table-actions">
-                            <button type="button" onclick="abrirModalPass('{{ u[0] }}', '{{ u[1] }}')"
+                            <button type="button" data-user-id="{{ u[0] }}" data-username="{{ u[1] }}"
+                                onclick="abrirModalPass(this)"
                                 class="btn btn-warning btn-small">Clave</button>
+                            <button type="button" data-user-id="{{ u[0] }}" data-username="{{ u[1] }}"
+                                data-email="{{ u[11] or '' }}" onclick="abrirModalCorreo(this)"
+                                class="btn btn-info btn-small">Correo</button>
                             {% if u[2] != 'admin' %}
                             <form action="/admin/eliminar_usuario/{{ u[0] }}" method="POST"
                                 onsubmit="return confirm('¿Seguro que deseas eliminar a este usuario?');"
@@ -184,6 +188,23 @@
         </div>
     </div>
 
+    <div id="modalCorreo" class="modal-overlay">
+        <div class="modal-card">
+            <h3 class="modal-title">Cambiar Correo</h3>
+            <p class="modal-text">Nuevo correo para <strong id="nombreUsuarioCorreo"></strong>:</p>
+
+            <form id="formCambiarCorreo" method="POST" action="">
+                <input type="email" name="nuevo_correo" placeholder="Escribe el nuevo correo" class="modal-input">
+
+                <div class="modal-actions">
+                    <button type="button" onclick="cerrarModalCorreo()"
+                        class="btn btn-secondary btn-auto">Cancelar</button>
+                    <button type="submit" class="btn btn-info btn-auto">Actualizar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     {% if rol_actual == 'admin' %}
     <div class="report-panel">
         <h3>Generar Reportes de Actividad</h3>
@@ -193,6 +214,55 @@
             <a href="/admin/reporte/semana" class="btn btn-info btn-auto">Esta Semana</a>
             <a href="/admin/reporte/mes" class="btn btn-info btn-auto">Este Mes</a>
         </div>
+
+        <div class="report-schedule-panel">
+            <h4>Programar correo recurrente</h4>
+            <p class="panel-help">Puedes enviar un resumen automático cada 3 o 5 días con ingresos al sistema y avance general.</p>
+
+            <form action="/admin/programar_reporte_actividad" method="POST" class="report-schedule-form">
+                <input type="text" name="nombre" placeholder="Nombre del reporte" class="field-input">
+                <select name="frecuencia_dias" class="field-input" required>
+                    <option value="3">Cada 3 días</option>
+                    <option value="5" selected>Cada 5 días</option>
+                </select>
+                <select name="formato" class="field-input" required>
+                    <option value="csv" selected>CSV adjunto</option>
+                    <option value="word">Word adjunto</option>
+                </select>
+                <input type="text" name="destinatarios" placeholder="Destinatarios opcionales separados por coma" class="field-input">
+                <button type="submit" class="btn btn-success btn-auto">Programar correo</button>
+            </form>
+
+            <div class="report-schedule-list">
+                {% if reportes_programados %}
+                    {% for reporte in reportes_programados %}
+                    <div class="report-schedule-card {{ 'is-active' if reporte.activo else 'is-inactive' }}">
+                        <div class="report-schedule-head">
+                            <strong>{{ reporte.nombre }}</strong>
+                            <span class="schedule-badge">Cada {{ reporte.frecuencia_dias }} días</span>
+                        </div>
+                        <div class="report-schedule-meta">
+                            <span>Formato: {{ reporte.formato|upper }}</span>
+                            <span>Estado: {{ 'Activo' if reporte.activo else 'Pausado' }}</span>
+                            <span>Próximo envío: {{ reporte.proximo_envio or '--' }}</span>
+                            <span>Último envío: {{ reporte.ultimo_envio or '--' }}</span>
+                            <span>Destinatarios: {{ reporte.destinatarios|join(', ') if reporte.destinatarios else 'Usa correos configurados' }}</span>
+                        </div>
+                        <div class="report-schedule-actions">
+                            <form action="/admin/toggle_reporte_programado/{{ reporte.id }}" method="POST">
+                                <button type="submit" class="btn btn-info btn-small">{{ 'Pausar' if reporte.activo else 'Activar' }}</button>
+                            </form>
+                            <form action="/admin/eliminar_reporte_programado/{{ reporte.id }}" method="POST" onsubmit="return confirm('¿Eliminar este reporte programado?');">
+                                <button type="submit" class="btn btn-delete btn-small">Eliminar</button>
+                            </form>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="panel-help">Todavía no hay reportes programados.</p>
+                {% endif %}
+            </div>
+        </div>
     </div>
     {% endif %}
 
@@ -201,9 +271,9 @@
         (function(){
             var kmlSaved = '{{ kml_saved or "" }}';
             if (kmlSaved === '1') {
-                alert('KML subido correctamente.');
+                alert('Mapa subido correctamente.');
             } else if (kmlSaved === '0') {
-                alert('Error: el KML no pudo guardarse. Revisa el formato.');
+                alert('Error: el Mapa no pudo guardarse. Revisa el formato.');
             }
         })();
     </script>

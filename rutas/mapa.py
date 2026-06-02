@@ -12,11 +12,75 @@ from services.multicanal import enviar_telegram
 import json
 import random
 import os
+import threading
 import urllib.request
 import urllib.error
 import ssl
 
 mapa_bp = Blueprint('mapa', __name__)
+
+# Telemetría viva en memoria para evitar write-locks continuos en SQLite.
+posiciones_flota = {}
+posiciones_flota_lock = threading.Lock()
+
+
+def _actualizar_cache_flotas(slot_id, unidad_id, lat, lng, velocidad_kmh=0, estado_motor='encendido', nivel_bateria=None, metadata_json=''):
+    marca_tiempo = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    registro = {
+        'slot_id': slot_id,
+        'unidad_id': str(unidad_id),
+        'lat': float(lat),
+        'lng': float(lng),
+        'velocidad_kmh': float(velocidad_kmh or 0),
+        'estado_motor': estado_motor or 'desconocido',
+        'nivel_bateria': float(nivel_bateria) if nivel_bateria is not None else None,
+        'timestamp': marca_tiempo,
+        'metadata_json': metadata_json or ''
+    }
+
+    with posiciones_flota_lock:
+        cache_slot = posiciones_flota.setdefault(int(slot_id), {})
+        cache_slot[str(unidad_id)] = registro
+
+    return registro
+
+
+def _obtener_cache_flotas(slot_id):
+    with posiciones_flota_lock:
+        cache_slot = posiciones_flota.get(int(slot_id), {})
+        return list(cache_slot.values())
+
+
+def _volcar_cache_flotas_a_bd(slot_id=None):
+    """Persistencia resumida opcional de la telemetría en RAM hacia SQLite."""
+    with posiciones_flota_lock:
+        slots = [int(slot_id)] if slot_id is not None else list(posiciones_flota.keys())
+        snapshot = {sid: list(posiciones_flota.get(sid, {}).values()) for sid in slots}
+
+    guardadas = 0
+    for sid, registros in snapshot.items():
+        for reg in registros:
+            try:
+                db.insertar_telemetria(
+                    sid,
+                    reg['unidad_id'],
+                    reg['lat'],
+                    reg['lng'],
+                    reg.get('velocidad_kmh', 0),
+                    reg.get('estado_motor', 'desconocido'),
+                    reg.get('nivel_bateria'),
+                    reg.get('metadata_json', '')
+                )
+                guardadas += 1
+            except Exception:
+                continue
+    return guardadas
+
+
+def _disparar_tarea_en_hilo(funcion, *args, **kwargs):
+    hilo = threading.Thread(target=funcion, args=args, kwargs=kwargs, daemon=True)
+    hilo.start()
+    return hilo
 
 # Intentar importar shapely para contenciones precisas; si no está, usaremos fallback por bbox
 try:
@@ -96,6 +160,7 @@ def guardar(slot_id):
         try:
             _asignar_padres_geojson_inplace(data)
             _asegurar_tareas_padre_geojson_inplace(data)
+            _asegurar_tareas_hijo_geojson_inplace(data)
         except Exception:
             pass
         try:
@@ -243,6 +308,35 @@ def _asegurar_tareas_padre_geojson_inplace(geojson_obj, principales=None):
     return asignadas
 
 
+def _asegurar_tareas_hijo_geojson_inplace(geojson_obj):
+    """Agrega actividades básicas a los predios hijos si aún no tienen tareas."""
+    if not geojson_obj or 'features' not in geojson_obj:
+        return 0
+
+    tareas_basicas = [
+        {'texto': 'Riego inicial', 'estado': 'rojo', 'completada': False},
+        {'texto': 'Fertilización básica', 'estado': 'rojo', 'completada': False},
+        {'texto': 'Monitoreo de crecimiento', 'estado': 'rojo', 'completada': False},
+        {'texto': 'Control de maleza', 'estado': 'rojo', 'completada': False},
+    ]
+
+    asignadas = 0
+    for feature in geojson_obj.get('features', []):
+        try:
+            props = feature.get('properties', {}) or {}
+            if not props.get('parent'):
+                continue
+            tareas = props.get('tareas')
+            if not isinstance(tareas, list) or len(tareas) == 0:
+                props['tareas'] = [dict(t) for t in tareas_basicas]
+                feature['properties'] = props
+                asignadas += 1
+        except Exception:
+            continue
+
+    return asignadas
+
+
 def _cobertura_mayor_al_umbral(parent_shape, child_shape, umbral=0.6):
     """Retorna True si la intersección cubre al menos el umbral del área del hijo."""
     try:
@@ -339,7 +433,7 @@ def api_obtener_kml(slot_id):
 def mis_permisos():
     if not session.get('logeado'):
         return {"logeado": False}
-        
+
     usuario = session.get('usuario')
     rol, db_agregar, db_editar, db_agregar_tar, db_marcar_tar, db_costos, db_desc_mapa, db_desc_logs = db.obtener_permisos_usuario(usuario)
     return {
@@ -348,27 +442,6 @@ def mis_permisos():
         "puede_descargar_mapa": rol == 'admin' or bool(db_desc_mapa),
         "puede_descargar_logs": rol == 'admin' or bool(db_desc_logs)
     }
-
-@mapa_bp.route('/api/reporte_mapa/<int:slot_id>', methods=['POST'])
-def reporte_mapa(slot_id):
-    if not session.get('logeado'):
-        return "Acceso denegado", 401
-
-    payload = request.get_json(silent=True) or {}
-    data = payload.get('geojson', payload)
-    if not data:
-        return "Sin datos", 400
-
-    # Verificar permiso de descarga de CSV por parte del usuario
-    usuario = session.get('usuario')
-    if not usuario:
-        return "Acceso denegado", 403
-
-    rol, db_agregar, db_editar, db_agregar_tar, db_marcar_tar, db_costos, db_desc_mapa, db_desc_logs = db.obtener_permisos_usuario(usuario)
-    if rol != 'admin' and not bool(db_desc_mapa):
-        return "Sin permisos para descargar CSV", 403
-
-    csv_str, nombre_archivo = generar_csv_mapa(data, slot_id)
 
     resp = make_response('\ufeff' + csv_str)
     resp.headers["Content-Disposition"] = f"attachment; filename={nombre_archivo}"
@@ -432,12 +505,15 @@ def reporte_email(slot_id):
             cuerpo = 'Adjunto encontrarás el reporte de avances generado desde ADHESA Smart Map.'
             mimetype = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
-        envio = enviar_correo_con_adjunto(asunto, cuerpo, destinatarios, adjunto_bytes, nombre_archivo, mimetype)
-        if not envio.get('ok'):
-            return jsonify(envio), 500
+        usuario_log = usuario
 
-        db.registrar_log(usuario, 'Enviar reporte por correo', f'Slot ID: {slot_id}, formato: {formato}, destinatarios: {len(destinatarios)}')
-        return jsonify({'ok': True, 'destinatarios': envio.get('destinatarios', []), 'formato': formato}), 200
+        def _enviar_reporte():
+            envio = enviar_correo_con_adjunto(asunto, cuerpo, destinatarios, adjunto_bytes, nombre_archivo, mimetype)
+            estado = 'enviado' if envio.get('ok') else 'fallo'
+            db.registrar_log(usuario_log, 'Enviar reporte por correo', f'Slot ID: {slot_id}, formato: {formato}, estado={estado}, destinatarios: {len(destinatarios)}')
+
+        _disparar_tarea_en_hilo(_enviar_reporte)
+        return jsonify({'ok': True, 'estado': 'en_proceso', 'destinatarios': destinatarios, 'formato': formato}), 202
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
 
@@ -505,33 +581,40 @@ def _evaluar_reglas_y_generar_alertas(slot_id, unidad_id, velocidad, bateria):
                 })
             )
 
+            usuario_log = session.get('username', 'sistema')
+
             # Canal externo inicial de Fase 2: correo electrónico.
             # No interrumpe el flujo principal si falla SMTP.
-            envio = enviar_alerta_email(payload_alerta)
-            if not envio.get('ok'):
-                db.registrar_log(
-                    session.get('username', 'sistema'),
-                    'Envio correo alerta (fallo/no-config)',
-                    f"Slot {slot_id} unidad {unidad_id} motivo={envio.get('motivo', 'desconocido')}"
-                )
+            def _enviar_alerta_correo():
+                envio = enviar_alerta_email(payload_alerta)
+                if not envio.get('ok'):
+                    db.registrar_log(
+                        usuario_log,
+                        'Envio correo alerta (fallo/no-config)',
+                        f"Slot {slot_id} unidad {unidad_id} motivo={envio.get('motivo', 'desconocido')}"
+                    )
+
+            _disparar_tarea_en_hilo(_enviar_alerta_correo)
 
             generadas += 1
             # Intentar enviar por canales adicionales (Telegram, WhatsApp placeholder)
-            try:
-                resultados = enviar_multicanal(payload_alerta)
-                # Persistir resultados por canal
+            def _enviar_multicanal_alerta():
                 try:
-                    for canal, res in resultados.items():
-                        destino = ''
-                        mensaje_log = json.dumps(res)
-                        notificacion_id = db.crear_notificacion(slot_id, canal, destino, tipo, payload_alerta['titulo'], payload_alerta['mensaje'], mensaje_log, origen='alerta')
-                        if notificacion_id:
-                            estado_final = 'enviado' if res.get('ok') else 'fallo'
-                            db.actualizar_notificacion_resultado(notificacion_id, mensaje_log, nuevo_estado=estado_final, incrementar_intentos=not res.get('ok'))
+                    resultados = enviar_multicanal(payload_alerta)
+                    try:
+                        for canal, res in resultados.items():
+                            destino = ''
+                            mensaje_log = json.dumps(res)
+                            notificacion_id = db.crear_notificacion(slot_id, canal, destino, tipo, payload_alerta['titulo'], payload_alerta['mensaje'], mensaje_log, origen='alerta')
+                            if notificacion_id:
+                                estado_final = 'enviado' if res.get('ok') else 'fallo'
+                                db.actualizar_notificacion_resultado(notificacion_id, mensaje_log, nuevo_estado=estado_final, incrementar_intentos=not res.get('ok'))
+                    except Exception:
+                        pass
                 except Exception:
                     pass
-            except Exception:
-                pass
+
+            _disparar_tarea_en_hilo(_enviar_multicanal_alerta)
 
     return generadas
 
@@ -620,7 +703,7 @@ def _sync_unidades_internal(slot_id, unidades_origen=None):
             unidades_list = []
 
         guardadas = 0
-        telemetria_insertada = 0
+        cache_actualizada = 0
 
         for u in unidades_list:
             unidad_id = u.get('unidad_id') or u.get('id') or u.get('device_id') or u.get('placa')
@@ -640,8 +723,17 @@ def _sync_unidades_internal(slot_id, unidades_origen=None):
 
             try:
                 if lat is not None and lng is not None:
-                    db.insertar_telemetria(slot_id, str(unidad_id), float(lat), float(lng), float(velocidad or 0), 'desconocido', float(bateria) if bateria is not None else None, json.dumps(u))
-                    telemetria_insertada += 1
+                    _actualizar_cache_flotas(
+                        slot_id,
+                        str(unidad_id),
+                        float(lat),
+                        float(lng),
+                        float(velocidad or 0),
+                        'desconocido',
+                        float(bateria) if bateria is not None else None,
+                        json.dumps(u)
+                    )
+                    cache_actualizada += 1
             except Exception:
                 pass
 
@@ -652,7 +744,7 @@ def _sync_unidades_internal(slot_id, unidades_origen=None):
         except Exception:
             usuario_log = 'sistema'
         db.registrar_log(usuario_log, 'Sync unidades', f'Slot {slot_id} procesadas={len(unidades_list)}')
-        return {'ok': True, 'guardadas_creadas': guardadas, 'telemetria_insertada': telemetria_insertada, 'procesadas': len(unidades_list)}
+        return {'ok': True, 'guardadas_creadas': guardadas, 'cache_actualizada': cache_actualizada, 'procesadas': len(unidades_list)}
     except Exception as e:
         return {'ok': False, 'error': str(e)}
 
@@ -690,9 +782,13 @@ def telegram_prueba(slot_id):
     try:
         usuario = session.get('username', 'sistema') if session.get('username') else 'sistema'
         mensaje = f"Prueba Telegram - slot {slot_id} - usuario: {usuario} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        res = enviar_telegram(mensaje)
-        status = 200 if res.get('ok') else 502
-        return jsonify(res), status
+        resultado = {'ok': True, 'estado': 'en_proceso'}
+
+        def _enviar():
+            enviar_telegram(mensaje)
+
+        _disparar_tarea_en_hilo(_enviar)
+        return jsonify(resultado), 202
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
 
@@ -706,22 +802,27 @@ def prueba_multicanal(slot_id):
             'titulo': f'Prueba multicanal slot {slot_id}',
             'mensaje': f'Prueba multicanal para slot {slot_id} en {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
         }
-        resultados = enviar_multicanal(payload_alerta)
-        # Persistir
-        try:
-            for canal, res in resultados.items():
-                resultado_json = json.dumps(res)
-                notificacion_id = db.crear_notificacion(slot_id, canal, '', payload_alerta['tipo'], payload_alerta['titulo'], payload_alerta['mensaje'], resultado_json, origen='prueba_multicanal')
-                if notificacion_id:
-                    db.actualizar_notificacion_resultado(
-                        notificacion_id,
-                        resultado_json,
-                        nuevo_estado='enviado' if res.get('ok') else 'fallo',
-                        incrementar_intentos=not res.get('ok')
-                    )
-        except Exception:
-            pass
-        return jsonify({'ok': True, 'resultados': resultados}), 200
+        usuario_log = session.get('username', 'sistema') if session.get('username') else 'sistema'
+
+        def _enviar():
+            resultados = enviar_multicanal(payload_alerta)
+            try:
+                for canal, res in resultados.items():
+                    resultado_json = json.dumps(res)
+                    notificacion_id = db.crear_notificacion(slot_id, canal, '', payload_alerta['tipo'], payload_alerta['titulo'], payload_alerta['mensaje'], resultado_json, origen='prueba_multicanal')
+                    if notificacion_id:
+                        db.actualizar_notificacion_resultado(
+                            notificacion_id,
+                            resultado_json,
+                            nuevo_estado='enviado' if res.get('ok') else 'fallo',
+                            incrementar_intentos=not res.get('ok')
+                        )
+            except Exception:
+                pass
+            db.registrar_log(usuario_log, 'Prueba multicanal', f'Slot {slot_id}')
+
+        _disparar_tarea_en_hilo(_enviar)
+        return jsonify({'ok': True, 'estado': 'en_proceso'}), 202
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
 
@@ -777,7 +878,6 @@ def smartmap_alertas(slot_id):
         return jsonify({'slot_id': slot_id, 'total': len(data), 'alertas': data}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
 
 @mapa_bp.route('/api/smartmap/alertas/<int:alerta_id>/atender', methods=['PATCH'])
 @require_permission('generar_alertas')
@@ -953,11 +1053,16 @@ def smartmap_enviar_prueba_email(slot_id):
                 'mensaje': 'Configuración de correo incompleta. Revisar variables SMTP_* y ALERT_EMAIL_TO.'
             }), 400
 
-        envio = enviar_alerta_email(payload)
-        if not envio.get('ok'):
-            return jsonify({'ok': False, 'error': envio.get('error', envio.get('motivo'))}), 500
+        usuario_log = session.get('username', 'desconocido')
 
-        db.registrar_log(session.get('username', 'desconocido'), 'Prueba correo SmartMap', f'Slot {slot_id}')
-        return jsonify({'ok': True, 'destinatarios': envio.get('destinatarios', [])}), 200
+        def _enviar_prueba():
+            envio = enviar_alerta_email(payload)
+            if not envio.get('ok'):
+                db.registrar_log(usuario_log, 'Prueba correo SmartMap', f"Slot {slot_id} error={envio.get('error', envio.get('motivo'))}")
+
+        _disparar_tarea_en_hilo(_enviar_prueba)
+
+        db.registrar_log(usuario_log, 'Prueba correo SmartMap', f'Slot {slot_id}')
+        return jsonify({'ok': True, 'estado': 'en_proceso', 'destinatarios': db.obtener_correos_usuarios()}), 202
     except Exception as e:
         return jsonify({'error': str(e)}), 500

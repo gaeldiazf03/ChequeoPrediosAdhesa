@@ -21,4 +21,4 @@ setInterval(function () {
             }
         })
         .catch(error => console.error("Error validando permisos:", error));
-}, 60000);
+}, 300000);

@@ -169,6 +169,18 @@ class DatabaseManager:
                           metadata_json TEXT,
                           FOREIGN KEY(slot_id) REFERENCES slots(id))''')
 
+            c.execute('''CREATE TABLE IF NOT EXISTS reportes_programados
+                         (id INTEGER PRIMARY KEY,
+                          nombre TEXT NOT NULL,
+                          frecuencia_dias INTEGER NOT NULL,
+                          destinatarios_json TEXT NOT NULL,
+                          formato TEXT DEFAULT 'csv',
+                          activo INTEGER DEFAULT 1,
+                          creado_por TEXT,
+                          creado_en TEXT,
+                          ultimo_envio TEXT,
+                          proximo_envio TEXT)''')
+
             c.execute('SELECT COUNT(*) FROM tipos_alerta')
             if c.fetchone()[0] == 0:
                 ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -446,6 +458,14 @@ class DatabaseManager:
             except sqlite3.IntegrityError:
                 pass
 
+    def actualizar_correo_usuario(self, user_id, correo=None):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            correo = (correo or '').strip() or None
+            c.execute('UPDATE usuarios SET correo = ? WHERE id = ?', (correo, user_id))
+            conn.commit()
+            return c.rowcount > 0
+
     def actualizar_ultima_conexion(self, username):
         with self._get_connection() as conn:
             c = conn.cursor()
@@ -641,6 +661,82 @@ class DatabaseManager:
             c = conn.cursor()
             c.execute('SELECT usuario, accion, detalles, fecha FROM logs WHERE fecha >= ? ORDER BY fecha DESC', (inicio,))
             return c.fetchall()
+
+    def obtener_logs_desde(self, fecha_inicio, limite=None):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            query = 'SELECT usuario, accion, detalles, fecha FROM logs WHERE fecha >= ? ORDER BY fecha DESC'
+            params = [fecha_inicio]
+            if limite is not None:
+                query += ' LIMIT ?'
+                params.append(int(limite))
+            c.execute(query, tuple(params))
+            return c.fetchall()
+
+    # === MÉTODOS DE REPORTES PROGRAMADOS ===
+
+    def crear_reporte_programado(self, nombre, frecuencia_dias, destinatarios_json, formato='csv', creado_por=None):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            ahora = datetime.now()
+            fecha_actual = ahora.strftime("%Y-%m-%d %H:%M:%S")
+            proximo_envio = (ahora + timedelta(days=int(frecuencia_dias))).strftime("%Y-%m-%d %H:%M:%S")
+            c.execute('''INSERT INTO reportes_programados
+                         (nombre, frecuencia_dias, destinatarios_json, formato, activo, creado_por, creado_en, ultimo_envio, proximo_envio)
+                         VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)''',
+                      (nombre, int(frecuencia_dias), destinatarios_json, formato, creado_por, fecha_actual, None, proximo_envio))
+            conn.commit()
+            return c.lastrowid
+
+    def obtener_reportes_programados(self, activo=None):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            query = 'SELECT id, nombre, frecuencia_dias, destinatarios_json, formato, activo, creado_por, creado_en, ultimo_envio, proximo_envio FROM reportes_programados'
+            params = []
+            if activo is not None:
+                query += ' WHERE activo = ?'
+                params.append(1 if activo else 0)
+            query += ' ORDER BY proximo_envio ASC, id DESC'
+            c.execute(query, tuple(params))
+            return c.fetchall()
+
+    def obtener_reportes_programados_vencidos(self, limite=20):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            c.execute('''SELECT id, nombre, frecuencia_dias, destinatarios_json, formato, activo, creado_por, creado_en, ultimo_envio, proximo_envio
+                         FROM reportes_programados
+                         WHERE activo = 1 AND proximo_envio IS NOT NULL AND proximo_envio <= ?
+                         ORDER BY proximo_envio ASC
+                         LIMIT ?''', (ahora, int(limite)))
+            return c.fetchall()
+
+    def marcar_reporte_programado_enviado(self, reporte_id, ultimo_envio=None, proximo_envio=None):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            ultimo_envio = ultimo_envio or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            campos = ['ultimo_envio = ?', 'proximo_envio = ?']
+            params = [ultimo_envio, proximo_envio]
+            params.append(reporte_id)
+            c.execute(f'''UPDATE reportes_programados
+                          SET {', '.join(campos)}
+                          WHERE id = ?''', tuple(params))
+            conn.commit()
+            return c.rowcount > 0
+
+    def actualizar_estado_reporte_programado(self, reporte_id, activo):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('UPDATE reportes_programados SET activo = ? WHERE id = ?', (1 if activo else 0, reporte_id))
+            conn.commit()
+            return c.rowcount > 0
+
+    def eliminar_reporte_programado(self, reporte_id):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('DELETE FROM reportes_programados WHERE id = ?', (reporte_id,))
+            conn.commit()
+            return c.rowcount > 0
 
     # === MÉTODOS DE ROLES Y PERMISOS ===
 

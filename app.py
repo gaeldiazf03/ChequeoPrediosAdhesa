@@ -7,6 +7,7 @@ from rutas.mapa import mapa_bp
 from rutas.admin import admin_bp
 from rutas.actividades import actividades_bp
 from services.notificaciones_reintentos import iniciar_scheduler_reintentos
+from services.reportes_programados import iniciar_scheduler_reportes_programados
 
 
 app = Flask(__name__)
@@ -23,6 +24,7 @@ app.register_blueprint(admin_bp)
 app.register_blueprint(actividades_bp)
 
 iniciar_scheduler_reintentos()
+iniciar_scheduler_reportes_programados()
 
 # === RUTA DE ACCESO DENEGADO ===
 @app.route('/acceso-denegado')

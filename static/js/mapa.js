@@ -107,8 +107,6 @@ function _highlightChildrenOf(parentLayer) {
     var parentName = parentLayer.feature.properties.name;
     if (!parentName) return;
 
-    var bounds = null;
-
     drawnItems.eachLayer(function(other){
         try {
             if (!other.feature || !other.feature.properties) return;
@@ -120,29 +118,11 @@ function _highlightChildrenOf(parentLayer) {
                         _originalStyles.set(other, orig);
                         other.setStyle({ color: '#c0392b', fillColor: '#f1948a', weight: 3, fillOpacity: 0.85 });
                         _highlightedChildren.push(other);
-                        if (typeof other.getBounds === 'function') {
-                            var otherBounds = other.getBounds();
-                            if (otherBounds && otherBounds.isValid && otherBounds.isValid()) {
-                                bounds = bounds ? bounds.extend(otherBounds) : L.latLngBounds(otherBounds);
-                            }
-                        }
                     } catch (e) { console.warn('No se pudo resaltar hijo', e); }
                 }
             }
         } catch (e) { }
     });
-
-    if (bounds && bounds.isValid && bounds.isValid()) {
-        try {
-            _parentPopupView = {
-                center: map.getCenter(),
-                zoom: map.getZoom()
-            };
-            map.fitBounds(bounds.pad(0.18), { animate: true, duration: 0.35 });
-        } catch (e) {
-            console.warn('No se pudo enfocar a los hijos', e);
-        }
-    }
 }
 
 function _ordenarCapasPorJerarquia() {
@@ -241,6 +221,15 @@ function _tareasPredioPadreDefault() {
     ];
 }
 
+function _tareasBasicasHijoDefault() {
+    return [
+        { texto: 'Riego inicial', estado: 'rojo', completada: false },
+        { texto: 'Fertilización básica', estado: 'rojo', completada: false },
+        { texto: 'Monitoreo de crecimiento', estado: 'rojo', completada: false },
+        { texto: 'Control de maleza', estado: 'rojo', completada: false }
+    ];
+}
+
 function _normalizarEstadoTarea(tarea) {
     if (!tarea) return 'rojo';
     var estado = (tarea.estado || '').toString().toLowerCase().trim();
@@ -267,10 +256,65 @@ function _colorEstadoTarea(estado) {
 function _asegurarTareasPredioPadre(layer) {
     if (!layer || !layer.feature || !layer.feature.properties) return;
     var props = layer.feature.properties;
-    if (!_esPredioPadreDefault(props.name)) return;
-    if (!Array.isArray(props.tareas) || props.tareas.length === 0) {
+    if (_esPredioPadreDefault(props.name) && (!Array.isArray(props.tareas) || props.tareas.length === 0)) {
         props.tareas = _tareasPredioPadreDefault();
     }
+    if (props.parent && (!Array.isArray(props.tareas) || props.tareas.length === 0)) {
+        props.tareas = _tareasBasicasHijoDefault();
+    }
+}
+
+function _resumenFichaHtml(props) {
+    var piezas = [];
+    piezas.push('<div class="sidebar-section"><div class="sidebar-title"><h3>' + escaparHtml(props.name || 'Lote') + '</h3>' + (props.parent ? '<span class="sidebar-badge">Hijo</span>' : '<span class="sidebar-badge">Padre</span>') + '</div>');
+    if (props.parent) piezas.push('<div class="sidebar-meta"><strong>Lote padre:</strong> ' + escaparHtml(props.parent) + '</div>');
+    piezas.push('<div class="sidebar-meta"><strong>Responsable:</strong> ' + escaparHtml(props.responsable || 'Sin responsable') + '</div>');
+    piezas.push('<div class="sidebar-meta"><strong>Variedad:</strong> ' + escaparHtml(props.variedad_cana || '—') + '</div>');
+    piezas.push('<div class="sidebar-meta"><strong>Riego:</strong> ' + escaparHtml(props.tipo_riego || '—') + '</div>');
+    piezas.push('<div class="sidebar-meta"><strong>Sanidad:</strong> ' + escaparHtml(props.estatus_sanitario || '—') + '</div>');
+    piezas.push('<div class="sidebar-meta"><strong>Edad:</strong> ' + escaparHtml(props.edad_cultivo || '—') + '</div>');
+    piezas.push('<div class="sidebar-meta"><strong>Suelo:</strong> ' + escaparHtml(props.tipo_suelo || '—') + '</div>');
+    piezas.push('<div class="sidebar-meta"><strong>Rendimiento TCH:</strong> ' + escaparHtml(props.rendimiento_tch || '—') + '</div>');
+    piezas.push('<div class="sidebar-meta"><strong>Últ. aplicación:</strong> ' + escaparHtml(props.ultima_aplicacion || '—') + '</div>');
+    piezas.push('<div class="sidebar-meta"><strong>Incidencias:</strong><br>' + escaparHtml(props.incidencias || 'Sin incidencias') + '</div></div>');
+    return piezas.join('');
+}
+
+function _renderSidebarContenido(layer) {
+    var sidebar = document.getElementById('lote-sidebar');
+    if (!sidebar) return;
+    var props = layer && layer.feature && layer.feature.properties ? layer.feature.properties : {};
+
+    var html = '';
+    html += _resumenFichaHtml(props);
+    html += '<div class="sidebar-section">';
+    html += '<div class="sidebar-title"><h3 style="margin-bottom:0;">Gestionar ficha</h3></div>';
+
+    if (puedeEditar) {
+        html += '<label>Nombre</label><input type="text" value="' + escaparHtml(props.name || '') + '" onchange="actualizarDato(\'name\', this.value)">';
+        html += '<label>Responsable</label><select onchange="actualizarDato(\'responsable\', this.value)">';
+        html += '<option value="">Sin responsable</option>' + usuariosLista.map(function (u) {
+            var seleccionado = u === props.responsable ? 'selected' : '';
+            return '<option value="' + escaparHtml(u) + '" ' + seleccionado + '>' + escaparHtml(u) + '</option>';
+        }).join('');
+        html += '</select>';
+        html += '<label>Variedad de caña</label><input type="text" value="' + escaparHtml(props.variedad_cana || '') + '" onchange="actualizarDato(\'variedad_cana\', this.value)">';
+        html += '<label>Tipo de riego</label><input type="text" value="' + escaparHtml(props.tipo_riego || '') + '" onchange="actualizarDato(\'tipo_riego\', this.value)">';
+        html += '<label>Edad cultivo</label><input type="number" value="' + escaparHtml(props.edad_cultivo || '') + '" onchange="actualizarDato(\'edad_cultivo\', this.value)">';
+        html += '<label>Tipo de suelo</label><input type="text" value="' + escaparHtml(props.tipo_suelo || '') + '" onchange="actualizarDato(\'tipo_suelo\', this.value)">';
+        html += '<label>Estatus sanitario</label><input type="text" value="' + escaparHtml(props.estatus_sanitario || '') + '" onchange="actualizarDato(\'estatus_sanitario\', this.value)">';
+        html += '<label>Incidencias / notas</label><textarea rows="4" onchange="actualizarDato(\'incidencias\', this.value)">' + escaparHtml(props.incidencias || '') + '</textarea>';
+    } else {
+        html += '<div class="sidebar-placeholder">No tienes permiso para editar esta ficha.</div>';
+    }
+
+    html += '</div>';
+    sidebar.innerHTML = html;
+}
+
+function abrirFichaEnSidebar(layer) {
+    capaActualPopup = layer;
+    _renderSidebarContenido(layer);
 }
 
 function prepararCapa(layer) {
@@ -292,6 +336,13 @@ function prepararCapa(layer) {
     layer.on('mouseover', function () { if (typeof this.setStyle === 'function') this.setStyle({ fillOpacity: 0.8, weight: 3 }); });
     layer.on('mouseout', function () { if (typeof this.setStyle === 'function') this.setStyle({ fillOpacity: 0.5, weight: 2 }); });
 
+    layer.on('click', function () {
+        abrirFichaEnSidebar(layer);
+        if (typeof this.openPopup === 'function') {
+            this.openPopup();
+        }
+    });
+
     layer.bindPopup(crearContenidoPopup(layer));
     layer.on('popupopen', function () {
         capaActualPopup = layer;
@@ -300,10 +351,6 @@ function prepararCapa(layer) {
     layer.on('popupclose', function () {
         capaActualPopup = null;
         _clearHighlightedChildren();
-        if (_parentPopupView) {
-            try { map.setView(_parentPopupView.center, _parentPopupView.zoom, { animate: true }); } catch (e) { }
-            _parentPopupView = null;
-        }
     });
 }
 
@@ -311,67 +358,12 @@ function crearContenidoPopup(layer) {
     var props = layer && layer.feature && layer.feature.properties ? layer.feature.properties : {};
     var puedeGestionarTareas = esAdmin || puedeAgregarTareas;
     var puedeMarcar = esAdmin || puedeMarcarTareas || usuarioActual === props.responsable;
-    var opcionesSuelo = [
-        { valor: '', texto: 'Seleccione...' },
-        { valor: 'Arcilloso', texto: 'Arcilloso' },
-        { valor: 'Arenoso', texto: 'Arenoso' },
-        { valor: 'Franco', texto: 'Franco' },
-        { valor: 'Limoso', texto: 'Limoso' }
-    ];
-    var opcionesRiego = [
-        { valor: '', texto: 'Seleccione...' },
-        { valor: 'Temporal', texto: 'Temporal' },
-        { valor: 'Goteo', texto: 'Goteo' },
-        { valor: 'Gravedad', texto: 'Gravedad' },
-        { valor: 'Aspersión', texto: 'Aspersión' }
-    ];
-    var opcionesMaleza = [
-        { valor: 'Bajo', texto: 'Bajo' },
-        { valor: 'Medio', texto: 'Medio' },
-        { valor: 'Alto', texto: 'Alto' }
-    ];
-    var opcionesHumedad = [
-        { valor: 'Seco', texto: 'Seco' },
-        { valor: 'Óptimo', texto: 'Óptimo' },
-        { valor: 'Saturado', texto: 'Saturado' }
-    ];
-    var opcionesSanidad = [
-        { valor: 'Sano', texto: '🟢 Sano' },
-        { valor: 'Prevención', texto: '🟡 En Prevención' },
-        { valor: 'Plaga', texto: '🔴 Plaga' },
-        { valor: 'Enfermedad', texto: '🔴 Enfermedad' }
-    ];
-
-    var html = `<div style="${estilosPopup.contenedor}">`;
-    html += `<h4 style="${estilosPopup.titulo}">🚜 Ficha del Lote</h4>`;
-
+    var html = `<div style="${estilosPopup.contenedor}; min-width: 220px;">`;
+    html += `<h4 style="${estilosPopup.titulo}; margin-bottom: 8px;">Tareas</h4>`;
     if (props.parent) {
-        html += `<div style="margin-bottom:10px; padding:8px 10px; background:#f5f7f5; border:1px solid #d7e7d7; border-radius:6px;">
-                    <label style="${estilosPopup.etiquetaPequena}; display:block; margin-bottom:4px; color:#2E7D32;">Lote Padre</label>
-                    <input type="text" value="${escaparHtml(props.parent)}" disabled style="width:100%; padding:6px; background:#eef7ee; border:1px solid #c9ddc9; box-sizing:border-box; font-weight:700; color:#1f4d1f;">
-                 </div>`;
+        html += `<div style="margin-bottom:10px; padding:6px 8px; background:#f5f7f5; border:1px solid #d7e7d7; border-radius:6px; font-size:12px; color:#2E7D32;"><strong>Padre:</strong> ${escaparHtml(props.parent)}</div>`;
     }
-
-    if (puedeEditar) {
-        html += `<input type="text" value="${escaparHtml(props.name)}" onchange="actualizarDato('name', this.value)" style="${estilosPopup.input} font-weight: bold; margin-bottom: 10px; padding: 5px;">`;
-    } else {
-        html += `<h3 style="margin-top:0; color:#333;">${escaparHtml(props.name)}</h3>`;
-    }
-
-    html += `<label style="${estilosPopup.etiqueta}">Responsable:</label><br>`;
-    if (puedeEditar) {
-        html += `<select onchange="actualizarDato('responsable', this.value)" style="width: 100%; margin-bottom: 15px; padding: 5px;">`;
-        html += `<option value="">Sin Responsable</option>`;
-        html += usuariosLista.map(function (u) {
-            var seleccionado = u === props.responsable ? 'selected' : '';
-            return `<option value="${escaparHtml(u)}" ${seleccionado}>${escaparHtml(u)}</option>`;
-        }).join('');
-        html += `</select>`;
-    } else {
-        html += `<p style="margin: 0 0 15px 0; font-weight: bold; color: #007bff;">${escaparHtml(props.responsable || 'Sin Responsable')}</p>`;
-    }
-
-    html += `<label style="${estilosPopup.etiqueta}">Tareas:</label>\n             <ul style="padding-left: 0; list-style: none; margin-top: 5px; margin-bottom: 15px;">`;
+    html += `<ul style="padding-left: 0; list-style: none; margin-top: 5px; margin-bottom: 15px;">`;
     (props.tareas || []).forEach(function (tarea, index) {
         var estado = _normalizarEstadoTarea(tarea);
         var colorEstado = _colorEstadoTarea(estado);
@@ -390,34 +382,7 @@ function crearContenidoPopup(layer) {
     if (puedeGestionarTareas) {
         html += `<div style="display: flex; gap: 5px; border-top: 1px solid #eee; padding-top: 10px; margin-bottom: 15px;">\n                    <input type="text" id="inputNuevaTarea" placeholder="Nueva tarea..." style="flex: 1; padding: 5px;">\n                    <button onclick="agregarTarea()" style="padding: 5px 10px; background: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer;">Add</button>\n                </div>`;
     }
-
-    html += `<div style="background: #f9f9f9; padding: 10px; border-radius: 5px; border: 1px solid #ddd;">\n                <h5 style="margin-top: 0; margin-bottom: 10px; color: #444;">Datos Agrícolas</h5>`;
-
-    if (esAdmin || puedeVerCostos) {
-        html += `<label style="${estilosPopup.etiquetaPequena}">Costo Estimado ($):</label>\n                 <input type="number" value="${escaparHtml(props.costo || 0)}" onchange="actualizarDato('costo', this.value)" style="${estilosPopup.input}">`;
-    }
-
-    html += `<label style="${estilosPopup.etiquetaPequena}">Variedad de Caña:</label>\n             <input type="text" placeholder="Ej. CP 72-2086" value="${escaparHtml(props.variedad_cana || '')}" onchange="actualizarDato('variedad_cana', this.value)" style="${estilosPopup.input}">`;
-    html += `<label style="${estilosPopup.etiquetaPequena}">Edad de Cultivo (Meses):</label>\n             <input type="number" min="0" value="${escaparHtml(props.edad_cultivo || '')}" onchange="actualizarDato('edad_cultivo', this.value)" style="${estilosPopup.input}">`;
-    html += `<label style="${estilosPopup.etiquetaPequena}">Tipo de Suelo:</label>\n             <select onchange="actualizarDato('tipo_suelo', this.value)" style="${estilosPopup.input}">\n                 ${construirOpcionesHTML(opcionesSuelo, props.tipo_suelo || '')}\n             </select>`;
-    html += crearFilaDosColumnas(
-        `<label style="${estilosPopup.etiquetaPequena}">Siembra:</label>\n         <input type="date" value="${escaparHtml(props.fecha_siembra || '')}" onchange="actualizarDato('fecha_siembra', this.value)" style="${estilosPopup.input}">`,
-        `<label style="${estilosPopup.etiquetaPequena}">Últ. Aplic.:</label>\n         <input type="date" value="${escaparHtml(props.ultima_aplicacion || '')}" onchange="actualizarDato('ultima_aplicacion', this.value)" style="${estilosPopup.input}">`
-    );
-
-    html += `<label style="${estilosPopup.etiquetaPequena}">Tipo de Riego:</label>\n             <select onchange="actualizarDato('tipo_riego', this.value)" style="${estilosPopup.input}">\n                 ${construirOpcionesHTML(opcionesRiego, props.tipo_riego || '')}\n             </select>`;
-    html += `<label style="${estilosPopup.etiquetaPequena}">Rendimiento Esperado (TCH):</label>\n             <input type="number" step="0.1" value="${escaparHtml(props.rendimiento_tch || '')}" onchange="actualizarDato('rendimiento_tch', this.value)" style="${estilosPopup.input}">`;
-    html += crearFilaDosColumnas(
-        `<label style="${estilosPopup.etiquetaPequena}">Maleza:</label>\n         <select onchange="actualizarDato('nivel_maleza', this.value)" style="${estilosPopup.input}">\n             ${construirOpcionesHTML(opcionesMaleza, props.nivel_maleza || '')}\n         </select>`,
-        `<label style="${estilosPopup.etiquetaPequena}">Humedad:</label>\n         <select onchange="actualizarDato('nivel_humedad', this.value)" style="${estilosPopup.input}">\n             ${construirOpcionesHTML(opcionesHumedad, props.nivel_humedad || '')}\n         </select>`
-    );
-
-    html += `<label style="${estilosPopup.etiquetaPequena}">Estatus Sanitario:</label>\n             <select onchange="actualizarDato('estatus_sanitario', this.value)" style="${estilosPopup.input}">\n                 ${construirOpcionesHTML(opcionesSanidad, props.estatus_sanitario || 'Sano')}\n             </select>`;
-
-    html += `<label style="${estilosPopup.etiquetaPequena}">Tipo de Fertilización:</label>\n             <input type="text" placeholder="Ej. Urea, NPK..." value="${escaparHtml(props.tipo_fertilizacion || '')}" onchange="actualizarDato('tipo_fertilizacion', this.value)" style="${estilosPopup.input}">`;
-    html += `<label style="${estilosPopup.etiquetaPequena}">Incidencias / Notas / Historial:</label>\n             <textarea onchange="actualizarDato('incidencias', this.value)" style="${estilosPopup.input} height:60px;">${escaparHtml(props.incidencias || '')}</textarea>`;
-
-    html += `</div></div>`;
+    html += `</div>`;
     return html;
 }
 
@@ -443,6 +408,7 @@ function actualizarPopupActual(mutador) {
     if (typeof capaActualPopup.setPopupContent === 'function') {
         capaActualPopup.setPopupContent(crearContenidoPopup(capaActualPopup));
     }
+    _renderSidebarContenido(capaActualPopup);
     if (typeof registrarCambio === 'function') registrarCambio();
 }
 
@@ -508,9 +474,6 @@ map.on('popupopen', function(e){
 map.on('popupclose', function(e){
     try {
         _clearHighlightedChildren();
-        if (_parentPopupView) {
-            map.setView(_parentPopupView.center, _parentPopupView.zoom, { animate: true });
-        }
     } catch (err) { }
     _parentPopupView = null;
 });
@@ -1294,7 +1257,7 @@ function iniciarSmartMapFase2() {
     setInterval(cargarTelemetriaSmartMap, 15000);
     setInterval(cargarAlertasSmartMap, 20000);
     setInterval(cargarReglasSmartMap, 45000);
-    setInterval(cargarTiposAlerta, 60000);
+    setInterval(cargarTiposAlerta, 300000);
 }
 
 iniciarSmartMapFase2();

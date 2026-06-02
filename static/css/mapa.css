@@ -16,6 +16,99 @@ h2 {
     flex-wrap: wrap;
     margin-bottom: 10px;
 }
+
+.map-workbench {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 14px;
+    align-items: stretch;
+}
+
+.map-canvas-wrap {
+    min-width: 0;
+    display: flex;
+}
+
+.lote-sidebar {
+    position: sticky;
+    top: 16px;
+    align-self: start;
+    max-height: 760px;
+    overflow-y: auto;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    border: 1px solid #dbe3ea;
+    border-radius: 12px;
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+    padding: 14px;
+}
+
+.lote-sidebar h3 {
+    margin-top: 0;
+    margin-bottom: 8px;
+    color: #0f172a;
+}
+
+.lote-sidebar .sidebar-section {
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.lote-sidebar .sidebar-section:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+    margin-bottom: 0;
+}
+
+.lote-sidebar label {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #475569;
+}
+
+.lote-sidebar input,
+.lote-sidebar select,
+.lote-sidebar textarea {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 8px 10px;
+    background: #fff;
+}
+
+.lote-sidebar .sidebar-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+.lote-sidebar .sidebar-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: #e2e8f0;
+    color: #0f172a;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.lote-sidebar .sidebar-meta {
+    color: #475569;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.lote-sidebar .sidebar-placeholder,
+.lote-sidebar .lote-sidebar-placeholder {
+    color: #64748b;
+    text-align: center;
+    padding: 24px 8px;
+}
 /* Permitir scroll horizontal si hay muchos botones en pantallas pequeñas */
 .map-toolbar { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
@@ -105,10 +198,15 @@ h2 {
 }
 
 .smartmap-alertas-lista {
-    display: grid;
+    display: flex;
+    flex-direction: column;
     gap: 8px;
     max-height: 200px;
     overflow-y: auto;
+}
+
+.smartmap-alertas-lista > * {
+    width: 100%;
 }
 
 .smartmap-alerta {
@@ -218,19 +316,23 @@ h2 {
 }
 
 #map {
-    height: 500px;
-    width: 100%;
-    margin-bottom: 20px;
-}
-#map {
-    height: 60vh;
-    max-height: 700px;
+    height: 760px;
+    max-height: 760px;
     min-height: 300px;
     width: 100%;
     margin-bottom: 20px;
 }
 
 @media (max-width: 900px) {
+    .map-workbench {
+        grid-template-columns: 1fr;
+    }
+
+    .lote-sidebar {
+        position: static;
+        max-height: none;
+    }
+
     #map { height: 50vh; min-height: 240px; }
 
     .smartmap-reglas-form {

@@ -1,3 +1,5 @@
+import json
+
 from flask import Blueprint, render_template, request, session, redirect, url_for
 from database import db
 from services.seguridad import require_permission
@@ -14,9 +16,29 @@ def index():
     
     slots = db.obtener_todos_los_slots()
     usuarios = db.obtener_todos_los_usuarios() if session.get('rol') == 'admin' else []
+    reportes_programados = []
+    if session.get('rol') == 'admin':
+        for reporte in db.obtener_reportes_programados():
+            destinatarios_raw = reporte[3] or ''
+            try:
+                destinatarios = json.loads(destinatarios_raw) if destinatarios_raw else []
+            except Exception:
+                destinatarios = [x.strip() for x in str(destinatarios_raw).replace(';', ',').split(',') if x.strip()]
+            reportes_programados.append({
+                'id': reporte[0],
+                'nombre': reporte[1],
+                'frecuencia_dias': reporte[2],
+                'destinatarios': destinatarios,
+                'formato': reporte[4],
+                'activo': bool(reporte[5]),
+                'creado_por': reporte[6],
+                'creado_en': reporte[7],
+                'ultimo_envio': reporte[8],
+                'proximo_envio': reporte[9],
+            })
     # Passthrough para mostrar resultado de carga KML (diagnóstico rápido)
     kml_saved = request.args.get('kml_saved')
-    return render_template('dashboard.html', slots=slots, usuarios=usuarios, rol_actual=session.get('rol'), kml_saved=kml_saved)
+    return render_template('dashboard.html', slots=slots, usuarios=usuarios, reportes_programados=reportes_programados, rol_actual=session.get('rol'), kml_saved=kml_saved)
 
 @dashboard_bp.route('/')
 def root_redirect():
@@ -48,9 +70,11 @@ def cargar(slot_id):
                 # usar la conversión y volver a generar KML para persistir
                 from rutas.mapa import _asignar_padres_geojson_inplace
                 from rutas.mapa import _asegurar_tareas_padre_geojson_inplace
+                from rutas.mapa import _asegurar_tareas_hijo_geojson_inplace
                 try:
                     _asignar_padres_geojson_inplace(geo)
                     _asegurar_tareas_padre_geojson_inplace(geo)
+                    _asegurar_tareas_hijo_geojson_inplace(geo)
                 except Exception:
                     pass
                 new_kml = convertir_geojson_a_kml(geo)
@@ -167,6 +191,15 @@ def admin_cambiar_password(user_id):
             db.registrar_log(session.get('usuario'), "Cambio Password", f"Usuario ID: {user_id}")
     return redirect(url_for('dashboard.index'))
 
+
+@dashboard_bp.route('/admin/cambiar_correo/<int:user_id>', methods=['POST'])
+def admin_cambiar_correo(user_id):
+    if session.get('rol') == 'admin':
+        nuevo_correo = request.form.get('nuevo_correo', '').strip()
+        if db.actualizar_correo_usuario(user_id, nuevo_correo):
+            db.registrar_log(session.get('usuario'), "Cambio Correo", f"Usuario ID: {user_id}, correo: {nuevo_correo or 'Sin correo'}")
+    return redirect(url_for('dashboard.index'))
+
 @dashboard_bp.route('/admin/toggle_grupo/<grupo>/<int:user_id>', methods=['POST'])
 def toggle_grupo(grupo, user_id):
     if session.get('rol') == 'admin':
@@ -195,4 +228,72 @@ def admin_toggle_descargar_mapa(user_id):
 def admin_toggle_descargar_logs(user_id):
     if session.get('rol') == 'admin':
         db.alternar_permiso(user_id, 'puede_descargar_logs')
+    return redirect(url_for('dashboard.index'))
+
+
+@dashboard_bp.route('/admin/programar_reporte_actividad', methods=['POST'])
+def programar_reporte_actividad():
+    if session.get('rol') != 'admin':
+        return redirect(url_for('dashboard.index'))
+
+    nombre = (request.form.get('nombre') or '').strip()
+    try:
+        frecuencia_dias = int(request.form.get('frecuencia_dias', '5'))
+    except Exception:
+        frecuencia_dias = 5
+    if frecuencia_dias not in (3, 5):
+        frecuencia_dias = 5
+
+    formato = (request.form.get('formato') or 'csv').strip().lower()
+    if formato not in ('csv', 'word'):
+        formato = 'csv'
+
+    destinatarios_txt = (request.form.get('destinatarios') or '').strip()
+    destinatarios = [x.strip() for x in destinatarios_txt.replace(';', ',').split(',') if x.strip()]
+    if not destinatarios:
+        destinatarios = db.obtener_correos_usuarios()
+
+    if not destinatarios:
+        fallback = (request.form.get('destinatarios_global') or '').strip()
+        if fallback:
+            destinatarios = [x.strip() for x in fallback.replace(';', ',').split(',') if x.strip()]
+
+    if not destinatarios:
+        destinatarios = []
+
+    if not nombre:
+        nombre = f'Reporte de actividad cada {frecuencia_dias} días'
+
+    reporte_id = db.crear_reporte_programado(
+        nombre,
+        frecuencia_dias,
+        json.dumps(destinatarios, ensure_ascii=False),
+        formato=formato,
+        creado_por=session.get('usuario')
+    )
+    if reporte_id:
+        db.registrar_log(session.get('usuario'), 'Programar reporte actividad', f'ID: {reporte_id}, frecuencia={frecuencia_dias}, formato={formato}, destinatarios={len(destinatarios)}')
+    return redirect(url_for('dashboard.index'))
+
+
+@dashboard_bp.route('/admin/toggle_reporte_programado/<int:reporte_id>', methods=['POST'])
+def toggle_reporte_programado(reporte_id):
+    if session.get('rol') == 'admin':
+        reportes = db.obtener_reportes_programados()
+        activo_actual = None
+        for reporte in reportes:
+            if reporte[0] == reporte_id:
+                activo_actual = int(reporte[5] or 0)
+                break
+        if activo_actual is not None:
+            db.actualizar_estado_reporte_programado(reporte_id, not bool(activo_actual))
+            db.registrar_log(session.get('usuario'), 'Toggle reporte programado', f'ID: {reporte_id}, activo={int(not bool(activo_actual))}')
+    return redirect(url_for('dashboard.index'))
+
+
+@dashboard_bp.route('/admin/eliminar_reporte_programado/<int:reporte_id>', methods=['POST'])
+def eliminar_reporte_programado(reporte_id):
+    if session.get('rol') == 'admin':
+        db.eliminar_reporte_programado(reporte_id)
+        db.registrar_log(session.get('usuario'), 'Eliminar reporte programado', f'ID: {reporte_id}')
     return redirect(url_for('dashboard.index'))

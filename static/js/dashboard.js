@@ -16,7 +16,9 @@ function cerrarModal() {
 }
 
 // Funciones para el Modal de Contraseñas
-function abrirModalPass(userId, username) {
+function abrirModalPass(boton) {
+    var userId = boton && boton.dataset ? boton.dataset.userId : '';
+    var username = boton && boton.dataset ? boton.dataset.username : '';
     document.getElementById('formCambiarPass').action = '/admin/cambiar_password/' + userId;
     document.getElementById('nombreUsuarioPass').innerText = username;
     document.getElementById('modalPass').style.display = 'flex';
@@ -25,6 +27,21 @@ function abrirModalPass(userId, username) {
 function cerrarModalPass() {
     document.getElementById('modalPass').style.display = 'none';
     document.querySelector('#formCambiarPass input[name="nueva_password"]').value = '';
+}
+
+function abrirModalCorreo(boton) {
+    var userId = boton && boton.dataset ? boton.dataset.userId : '';
+    var username = boton && boton.dataset ? boton.dataset.username : '';
+    var correoActual = boton && boton.dataset ? boton.dataset.email : '';
+    document.getElementById('formCambiarCorreo').action = '/admin/cambiar_correo/' + userId;
+    document.getElementById('nombreUsuarioCorreo').innerText = username;
+    document.querySelector('#formCambiarCorreo input[name="nuevo_correo"]').value = correoActual || '';
+    document.getElementById('modalCorreo').style.display = 'flex';
+}
+
+function cerrarModalCorreo() {
+    document.getElementById('modalCorreo').style.display = 'none';
+    document.querySelector('#formCambiarCorreo input[name="nuevo_correo"]').value = '';
 }
 
 // Función para mostrar el spinner de carga al subir KML
@@ -39,10 +56,13 @@ function mostrarSpinnerYEnviar(inputElement) {
 window.onclick = function(event) {
     var modalEliminar = document.getElementById("modalEliminar");
     var modalPass = document.getElementById("modalPass");
+    var modalCorreo = document.getElementById("modalCorreo");
     
     if (event.target == modalEliminar) {
         cerrarModal();
     } else if (event.target == modalPass) {
         cerrarModalPass();
+    } else if (event.target == modalCorreo) {
+        cerrarModalCorreo();
     }
 }

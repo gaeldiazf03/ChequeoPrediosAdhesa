@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Editor KML</title>
+    <title>Adhesa</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
     <link rel="stylesheet" href="{{ url_for('static', filename='css/mapa.css') }}">
@@ -11,7 +11,7 @@
 </head>
 
 <body>
-    <h2>Editor y Creador de Áreas KML</h2>
+    <h2>Gestión de Adhesa</h2>
 
     <div class="map-toolbar">
         {% if puede_agregar %}
@@ -24,16 +24,36 @@
         {% endif %}
 
         {% if puede_descargar_mapa %}
-        <button onclick="descargarReporteCsv(this)" class="map-button map-button-info">📥 Descargar CSV</button>
+        <button onclick="descargarReporteCsv(this)" class="map-button map-button-info">Descargar log</button>
         {% endif %}
 
-        <button onclick="descargarReporte(this)" class="map-button map-button-info">📄 Descargar Avances</button>
+        <button onclick="descargarReporte(this)" class="map-button map-button-info">Descargar Avances</button>
         {% if puede_descargar_mapa %}
-        <button onclick="enviarReportePorCorreo(this)" class="map-button map-button-warning">📧 Enviar por correo</button>
+        <button onclick="enviarReportePorCorreo(this)" class="map-button map-button-warning">Enviar por correo</button>
         {% endif %}
-        <button onclick="exportarKML()" class="map-button map-button-primary">Exportar a KML</button>
+        <button onclick="exportarKML()" class="map-button map-button-primary">Exportar a mapa</button>
         <!-- Botones de análisis manual removidos: asignación ocurre automáticamente al guardar/subir KML -->
     </div>
+
+    <section class="map-workbench">
+        <div class="map-canvas-wrap">
+            <div id="map" data-slot-id="{{ slot_id }}" data-puede-agregar="{{ puede_agregar|lower }}"
+                data-puede-editar="{{ puede_editar|lower }}" data-es-admin="{{ es_admin|lower }}"
+                data-puede-marcar-tareas="{{ puede_marcar_tareas|lower }}"
+                data-puede-agregar-tareas="{{ puede_agregar_tareas|lower }}" data-usuario-actual="{{ usuario_actual }}"
+                data-usuarios-lista="{{ usuarios_lista_json }}" data-puede-ver-costos="{{ puede_ver_costos|lower }}"
+                data-puede-descargar-mapa="{{ puede_descargar_mapa|lower }}"
+                data-puede-descargar-logs="{{ puede_descargar_logs|lower }}"
+                data-puede-ver-alertas="{{ puede_ver_alertas|lower }}"></div>
+        </div>
+
+        <aside id="lote-sidebar" class="lote-sidebar">
+            <div class="lote-sidebar-placeholder">
+                <h3>Ficha técnica</h3>
+                <p>Haz clic sobre un predio para ver aquí su ficha técnica y editarla sin recargar la pantalla.</p>
+            </div>
+        </aside>
+    </section>
 
     <section class="smartmap-panel">
         <div class="smartmap-panel-header">
@@ -114,15 +134,6 @@
         </div>
         {% endif %}
     </section>
-
-    <div id="map" data-slot-id="{{ slot_id }}" data-puede-agregar="{{ puede_agregar|lower }}"
-        data-puede-editar="{{ puede_editar|lower }}" data-es-admin="{{ es_admin|lower }}"
-        data-puede-marcar-tareas="{{ puede_marcar_tareas|lower }}"
-        data-puede-agregar-tareas="{{ puede_agregar_tareas|lower }}" data-usuario-actual="{{ usuario_actual }}"
-        data-usuarios-lista="{{ usuarios_lista_json }}" data-puede-ver-costos="{{ puede_ver_costos|lower }}"
-        data-puede-descargar-mapa="{{ puede_descargar_mapa|lower }}"
-        data-puede-descargar-logs="{{ puede_descargar_logs|lower }}"
-        data-puede-ver-alertas="{{ puede_ver_alertas|lower }}"></div>
 
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
