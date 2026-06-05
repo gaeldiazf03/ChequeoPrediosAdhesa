@@ -673,6 +673,15 @@ class DatabaseManager:
             c.execute(query, tuple(params))
             return c.fetchall()
 
+    def obtener_logs_entre(self, fecha_inicio, fecha_fin):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('''SELECT usuario, accion, detalles, fecha
+                         FROM logs
+                         WHERE fecha >= ? AND fecha <= ?
+                         ORDER BY fecha DESC''', (fecha_inicio, fecha_fin))
+            return c.fetchall()
+
     # === MÉTODOS DE REPORTES PROGRAMADOS ===
 
     def crear_reporte_programado(self, nombre, frecuencia_dias, destinatarios_json, formato='csv', creado_por=None):

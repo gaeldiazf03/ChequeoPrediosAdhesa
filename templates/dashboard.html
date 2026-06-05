@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
 </head>
 
-<body>
+<body data-kml-saved="{{ kml_saved or '' }}">
     <div id="spinnerCarga" class="spinner-overlay">
         <div class="spinner-ring"></div>
         <p class="spinner-text">Cargando mapa, por favor espera...</p>
@@ -212,11 +212,19 @@
         <div class="report-summary-panel">
             <h3>Reportes de Login</h3>
             <p class="panel-help">Estos reportes de actividad te permiten analizar el historial de entradas del sistema realizado por los usuarios</p>
-            <div class="report-actions">
-                <a href="/admin/reporte/dia" class="btn btn-info btn-auto">Hoy</a>
-                <a href="/admin/reporte/semana" class="btn btn-info btn-auto">Esta Semana</a>
-                <a href="/admin/reporte/mes" class="btn btn-info btn-auto">Este Mes</a>
-            </div>
+            <form action="/admin/reporte/logins" method="POST" class="report-range-form">
+                <div class="report-range-fields">
+                    <label class="report-range-field">
+                        <span class="field-label">Desde</span>
+                        <input type="date" name="fecha_inicio" class="field-input" required>
+                    </label>
+                    <label class="report-range-field">
+                        <span class="field-label">Hasta</span>
+                        <input type="date" name="fecha_fin" class="field-input" required>
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-info btn-auto">Descargar reporte</button>
+            </form>
         </div>
 
         <div class="report-schedule-panel">
@@ -225,7 +233,10 @@
 
             <form action="/admin/programar_reporte_actividad" method="POST" class="report-schedule-form">
                 <input type="text" name="nombre" placeholder="Nombre del reporte" class="field-input">
-                <input type="number" name="frecuencia_dias" min="1" step="1" value="5" placeholder="Cada X días" class="field-input">
+                <div class="report-frequency-field">
+                    <input type="number" name="frecuencia_dias" min="1" step="1" value="5" placeholder="Cada X días" class="field-input" data-frequency-days>
+                    <p class="report-frequency-legend" data-frequency-legend>Cada 5 días se enviará el aviso</p>
+                </div>
                 <div class="report-format-options">
                     <span class="field-label">Formato del adjunto</span>
                     <label class="checkbox-option">
@@ -288,16 +299,6 @@
     {% endif %}
 
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
-    <script>
-        (function(){
-            var kmlSaved = '{{ kml_saved or "" }}';
-            if (kmlSaved === '1') {
-                alert('Mapa subido correctamente.');
-            } else if (kmlSaved === '0') {
-                alert('Error: el Mapa no pudo guardarse. Revisa el formato.');
-            }
-        })();
-    </script>
 </body>
 
 </html>

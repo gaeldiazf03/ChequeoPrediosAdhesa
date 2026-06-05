@@ -662,12 +662,12 @@ function inicializarGantt() {
 // ============= CLIMA =============
 async function actualizarClima() {
     try {
-        // Usar coordenadas del lote o por defecto Tampico, México
-        const lat = 22.2331;
-        const lon = -97.8611;
+        // Ubicación fija solicitada: Pánuco, Veracruz, México
+        const lat = 22.0556;
+        const lon = -98.1833;
         
         // Llamar a API abierta de clima (ej: Open-Meteo o similar)
-        const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,precipitation_probability&temperature_unit=celsius`);
+        const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,precipitation_probability,weather_code&temperature_unit=celsius`);
         const data = await response.json();
         
         if (data.current) {
@@ -676,11 +676,13 @@ async function actualizarClima() {
             
             document.getElementById('temp-display').textContent = `${temp}°C`;
             document.getElementById('lluvia-display').textContent = `${lluvia}% lluvia`;
+            actualizarIconoClima(data.current);
         }
     } catch (e) {
         console.warn('Error al obtener clima:', e);
         document.getElementById('temp-display').textContent = '--°C';
         document.getElementById('lluvia-display').textContent = '--% lluvia';
+        actualizarIconoClima(null);
     }
 }
 
@@ -745,9 +747,18 @@ document.addEventListener('DOMContentLoaded', function() {
     // Actualizar clima cada 30 minutos
     setInterval(actualizarClima, 30 * 60 * 1000);
 });
-let coordenadasActuales = { lat: 22.2331, lon: -97.8611 }; // Por defecto: Tampico, México
+let coordenadasActuales = { lat: 22.0556, lon: -98.1833 }; // Panuco, Veracruz, Mexico
 let cacheClima = { timestamp: 0, data: null };
 const CACHE_DURACION = 5 * 60 * 1000; // 5 minutos
+
+const ICONOS_CLIMA = {
+    soleado: 'https://cdn.jsdelivr.net/gh/basmilius/weather-icons/production/fill/all/clear-day.svg',
+    parcial: 'https://cdn.jsdelivr.net/gh/basmilius/weather-icons/production/fill/all/partly-cloudy-day.svg',
+    nublado: 'https://cdn.jsdelivr.net/gh/basmilius/weather-icons/production/fill/all/overcast-day.svg',
+    lluvia: 'https://cdn.jsdelivr.net/gh/basmilius/weather-icons/production/fill/all/rain.svg',
+    tormenta: 'https://cdn.jsdelivr.net/gh/basmilius/weather-icons/production/fill/all/thunderstorms-rain.svg'
+};
+
 async function actualizarClima(lat = coordenadasActuales.lat, lon = coordenadasActuales.lon) {
     try {
         // Verificar caché
@@ -761,7 +772,7 @@ async function actualizarClima(lat = coordenadasActuales.lat, lon = coordenadasA
         }
         
         // Llamar a API abierta de clima (Open-Meteo - gratuita, sin autenticación)
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,precipitation_probability&timezone=auto`;
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,precipitation_probability,weather_code&timezone=auto`;
         const response = await fetch(url);
         
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -785,8 +796,9 @@ async function actualizarClima(lat = coordenadasActuales.lat, lon = coordenadasA
 function mostrarClima(datos) {
     const tempEl = document.getElementById('temp-display');
     const lluviaEl = document.getElementById('lluvia-display');
+    const iconoEl = document.getElementById('clima-icono');
     
-    if (!tempEl || !lluviaEl) return;
+    if (!tempEl || !lluviaEl || !iconoEl) return;
     
     if (datos && datos.temperature_2m !== undefined) {
         const temp = Math.round(datos.temperature_2m);
@@ -794,10 +806,52 @@ function mostrarClima(datos) {
         
         tempEl.textContent = `${temp}°C`;
         lluviaEl.textContent = `${lluvia}% lluvia`;
+        actualizarIconoClima(datos);
     } else {
         tempEl.textContent = '--°C';
         lluviaEl.textContent = '--% lluvia';
+        actualizarIconoClima(null);
     }
+}
+
+function actualizarIconoClima(datos) {
+    const iconoEl = document.getElementById('clima-icono');
+    if (!iconoEl) return;
+
+    const { src, alt } = obtenerIconoClima(datos);
+    iconoEl.src = src;
+    iconoEl.alt = alt;
+    iconoEl.title = alt;
+}
+
+function obtenerIconoClima(datos) {
+    if (!datos) {
+        return {
+            src: ICONOS_CLIMA.parcial,
+            alt: 'Clima no disponible'
+        };
+    }
+
+    const codigo = Number(datos.weather_code);
+    const lluvia = Number(datos.precipitation_probability || 0);
+
+    if ([95, 96, 99].includes(codigo)) {
+        return { src: ICONOS_CLIMA.tormenta, alt: 'Tormenta' };
+    }
+
+    if (lluvia >= 40 || [51, 53, 55, 61, 63, 65, 80, 81, 82].includes(codigo)) {
+        return { src: ICONOS_CLIMA.lluvia, alt: 'Lluvia' };
+    }
+
+    if ([3, 45, 48].includes(codigo)) {
+        return { src: ICONOS_CLIMA.nublado, alt: 'Nublado' };
+    }
+
+    if ([0].includes(codigo)) {
+        return { src: ICONOS_CLIMA.soleado, alt: 'Soleado' };
+    }
+
+    return { src: ICONOS_CLIMA.parcial, alt: 'Parcialmente nublado' };
 }
 
 function actualizarClimaDesdeFeature(layer) {
@@ -824,9 +878,8 @@ function actualizarClimaDesdeFeature(layer) {
             return; // No se puede extraer coordenadas
         }
         
-        // Actualizar coordenadas actuales y refrescar clima
-        coordenadasActuales = { lat, lon };
-        actualizarClima(lat, lon);
+        // Mantener clima fijo en Pánuco (no cambiar por predio seleccionado)
+        actualizarClima();
     } catch (e) {
         console.warn('Error al extraer coordenadas del feature:', e);
     }

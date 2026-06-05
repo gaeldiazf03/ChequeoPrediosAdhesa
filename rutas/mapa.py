@@ -20,6 +20,8 @@ import ssl
 
 mapa_bp = Blueprint('mapa', __name__)
 SMARTMAP_ALERTAS_HABILITADO = os.environ.get('ENABLE_SMARTMAP_ALERTS', '0') == '1'
+CLIMA_PANUCO_LAT = 22.0556
+CLIMA_PANUCO_LON = -98.1833
 
 # Telemetría viva en memoria para evitar write-locks continuos en SQLite.
 posiciones_flota = {}
@@ -1129,25 +1131,23 @@ def smartmap_enviar_prueba_email(slot_id):
 
 
 # ============= CLIMA API =============
+@mapa_bp.route('/api/clima', methods=['GET'])
 @mapa_bp.route('/api/clima/<float:lat>/<float:lon>', methods=['GET'])
-def obtener_clima(lat, lon):
+def obtener_clima(lat=None, lon=None):
     """
-    Obtiene datos de clima para coordenadas específicas.
+    Obtiene datos de clima para Pánuco, Veracruz, México.
     Fuente: Open-Meteo API (gratuita, sin autenticación)
 
     Args:
-        lat: Latitud en grados decimales
-        lon: Longitud en grados decimales
+        lat: Coordenada opcional (ignorada para mantener ubicación fija)
+        lon: Coordenada opcional (ignorada para mantener ubicación fija)
 
     Returns:
         JSON con: temperatura, humedad, probabilidad_lluvia, zona_horaria, actualizado_en
     """
     try:
-        # Validar rangos de coordenadas
-        if lat < -90 or lat > 90 or lon < -180 or lon > 180:
-            return jsonify({'error': 'Coordenadas inválidas'}), 400
-
-        datos = servicio_clima.obtener_clima(lat, lon)
+        datos = servicio_clima.obtener_clima(CLIMA_PANUCO_LAT, CLIMA_PANUCO_LON)
+        datos['ubicacion'] = 'Panuco, Veracruz, Mexico'
         return jsonify(datos), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500

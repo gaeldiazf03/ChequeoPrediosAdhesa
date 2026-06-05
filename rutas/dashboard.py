@@ -1,8 +1,11 @@
 import json
+import io
+from datetime import datetime
 
-from flask import Blueprint, render_template, request, session, redirect, url_for
+from flask import Blueprint, render_template, request, session, redirect, url_for, send_file
 from database import db
 from services.seguridad import require_permission
+from services.reportes import generar_csv_logs
 from utils.funciones import convertir_kml_a_geojson, convertir_geojson_a_kml
 
 dashboard_bp = Blueprint('dashboard', __name__)
@@ -138,6 +141,47 @@ def dashboard_main():
         return redirect(url_for('login.index'))
     
     return render_template('dashboard_main.html', usuario=session.get('username'))
+
+
+@dashboard_bp.route('/admin/reporte/logins', methods=['POST'])
+def reporte_logins_rango():
+    if session.get('rol') != 'admin':
+        return redirect(url_for('dashboard.index'))
+
+    fecha_inicio_raw = (request.form.get('fecha_inicio') or '').strip()
+    fecha_fin_raw = (request.form.get('fecha_fin') or '').strip()
+
+    if not fecha_inicio_raw or not fecha_fin_raw:
+        return redirect(url_for('dashboard.index'))
+
+    try:
+        fecha_inicio_dt = datetime.strptime(fecha_inicio_raw, '%Y-%m-%d')
+        fecha_fin_dt = datetime.strptime(fecha_fin_raw, '%Y-%m-%d')
+    except ValueError:
+        return redirect(url_for('dashboard.index'))
+
+    if fecha_fin_dt < fecha_inicio_dt:
+        fecha_inicio_dt, fecha_fin_dt = fecha_fin_dt, fecha_inicio_dt
+
+    fecha_inicio = fecha_inicio_dt.strftime('%Y-%m-%d 00:00:00')
+    fecha_fin = fecha_fin_dt.strftime('%Y-%m-%d 23:59:59')
+
+    logs = db.obtener_logs_entre(fecha_inicio, fecha_fin)
+    logs_csv = [(fila[0], fila[1], fila[2], fila[3]) for fila in logs]
+    csv_texto = generar_csv_logs(logs_csv)
+
+    buffer = io.BytesIO(csv_texto.encode('utf-8'))
+    buffer.seek(0)
+    nombre_archivo = f"reporte_logins_{fecha_inicio_dt.strftime('%Y%m%d')}_{fecha_fin_dt.strftime('%Y%m%d')}.csv"
+
+    db.registrar_log(session.get('usuario'), 'Generar reporte logins', f'{fecha_inicio} a {fecha_fin}, registros={len(logs_csv)}')
+
+    return send_file(
+        buffer,
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name=nombre_archivo
+    )
 
 @dashboard_bp.route('/dashboard/timeline/<int:slot_id>')
 @require_permission('ver_actividades')

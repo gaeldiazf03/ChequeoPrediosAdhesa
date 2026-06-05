@@ -117,6 +117,35 @@ function inicializarSelectorDestinatarios() {
     renderChips();
 }
 
+function inicializarLeyendaFrecuenciaAvisos() {
+    var inputFrecuencia = document.querySelector('[data-frequency-days]');
+    var leyendaFrecuencia = document.querySelector('[data-frequency-legend]');
+    if (!inputFrecuencia || !leyendaFrecuencia) {
+        return;
+    }
+
+    function actualizarLeyenda() {
+        var valor = parseInt(inputFrecuencia.value, 10);
+        if (!valor || valor < 1) {
+            valor = 1;
+        }
+        leyendaFrecuencia.textContent = 'Cada ' + valor + ' días se enviará el aviso';
+    }
+
+    inputFrecuencia.addEventListener('input', actualizarLeyenda);
+    inputFrecuencia.addEventListener('change', actualizarLeyenda);
+    actualizarLeyenda();
+}
+
+function mostrarEstadoMapaGuardado() {
+    var kmlSaved = document.body ? document.body.dataset.kmlSaved : '';
+    if (kmlSaved === '1') {
+        alert('Mapa subido correctamente.');
+    } else if (kmlSaved === '0') {
+        alert('Error: el Mapa no pudo guardarse. Revisa el formato.');
+    }
+}
+
 // Lógica para cerrar los modales si se hace clic en el área oscura del fondo
 window.onclick = function(event) {
     var modalEliminar = document.getElementById("modalEliminar");
@@ -133,3 +162,5 @@ window.onclick = function(event) {
 }
 
 document.addEventListener('DOMContentLoaded', inicializarSelectorDestinatarios);
+document.addEventListener('DOMContentLoaded', inicializarLeyendaFrecuenciaAvisos);
+document.addEventListener('DOMContentLoaded', mostrarEstadoMapaGuardado);
