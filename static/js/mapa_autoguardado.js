@@ -22,6 +22,9 @@ function guardarAutomaticamente() {
     guardando = true;
     actualizarEstado('Guardando...');
 
+    // Sincronizar tareas del calendario en el GeoJSON antes de enviar.
+    try { if (typeof window.syncTareasToFeatures === 'function') window.syncTareasToFeatures(); } catch(e) { console.warn('sync error', e); }
+
     fetch('/api/guardar_kml/' + slotId, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

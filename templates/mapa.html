@@ -4,14 +4,29 @@
 <head>
     <meta charset="UTF-8">
     <title>Adhesa</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/common.css') }}">
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
     <link rel="stylesheet" href="{{ url_for('static', filename='css/mapa.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/mapa_nuevas.css') }}">
+    <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
 
 <body>
-    <h2>Gestión de Adhesa</h2>
+    <nav class="adhesa-navbar">
+        <div class="navbar-left">
+            <button onclick="volverAlterior()" class="navbar-btn">Volver</button>
+            <h2 class="navbar-title">Gestion de Adhesa</h2>
+        </div>
+        <div class="navbar-right">
+            <div id="clima-widget" class="clima-widget">
+                <span id="temp-display">--C</span>
+                <span id="lluvia-display">--% lluvia</span>
+            </div>
+        </div>
+    </nav>
 
     <div class="map-toolbar">
         {% if puede_agregar %}
@@ -24,7 +39,7 @@
         {% endif %}
 
         {% if puede_descargar_mapa %}
-        <button onclick="descargarReporteCsv(this)" class="map-button map-button-info">Descargar log</button>
+        <button onclick="descargarReporteExcel(this)" class="map-button map-button-info">Descargar log</button>
         {% endif %}
 
         <button onclick="descargarReporte(this)" class="map-button map-button-info">Descargar Avances</button>
@@ -36,113 +51,73 @@
     </div>
 
     <section class="map-workbench">
-        <div class="map-canvas-wrap">
-            <div id="map" data-slot-id="{{ slot_id }}" data-puede-agregar="{{ puede_agregar|lower }}"
-                data-puede-editar="{{ puede_editar|lower }}" data-es-admin="{{ es_admin|lower }}"
-                data-puede-marcar-tareas="{{ puede_marcar_tareas|lower }}"
-                data-puede-agregar-tareas="{{ puede_agregar_tareas|lower }}" data-usuario-actual="{{ usuario_actual }}"
-                data-usuarios-lista="{{ usuarios_lista_json }}" data-puede-ver-costos="{{ puede_ver_costos|lower }}"
-                data-puede-descargar-mapa="{{ puede_descargar_mapa|lower }}"
-                data-puede-descargar-logs="{{ puede_descargar_logs|lower }}"
-                data-puede-ver-alertas="{{ puede_ver_alertas|lower }}"></div>
+        <div class="map-column">
+            <div class="map-canvas-wrap">
+                <div id="map" data-slot-id="{{ slot_id }}" data-puede-agregar="{{ puede_agregar|lower }}"
+                    data-puede-editar="{{ puede_editar|lower }}" data-es-admin="{{ es_admin|lower }}"
+                    data-puede-marcar-tareas="{{ puede_marcar_tareas|lower }}"
+                    data-puede-agregar-tareas="{{ puede_agregar_tareas|lower }}" data-usuario-actual="{{ usuario_actual }}"
+                    data-usuarios-lista="{{ usuarios_lista_json }}" data-puede-ver-costos="{{ puede_ver_costos|lower }}"
+                    data-puede-descargar-mapa="{{ puede_descargar_mapa|lower }}"
+                    data-puede-descargar-logs="{{ puede_descargar_logs|lower }}"
+                    data-puede-ver-alertas="{{ puede_ver_alertas|lower }}"></div>
+            </div>
         </div>
 
-        <aside id="lote-sidebar" class="lote-sidebar">
-            <div class="lote-sidebar-placeholder">
-                <h3>Ficha técnica</h3>
-                <p>Haz clic sobre un predio para ver aquí su ficha técnica y editarla sin recargar la pantalla.</p>
+        <div class="calendar-column">
+            <div class="calendar-panel">
+                <div id="calendar"></div>
             </div>
-        </aside>
+
+            <div id="task-editor" class="task-editor"></div>
+        </div>
+
+        <div id="tasks-row" class="tasks-row">
+            <div class="tasks-panel">
+                <div class="parent-row">
+                    <label for="parent-select">Predio padre</label>
+                    <select id="parent-select">
+                        <option value="">(seleccionar)</option>
+                    </select>
+                </div>
+
+                <div class="tasks-table-wrap">
+                    <table id="tasks-table" class="tasks-table">
+                        <thead>
+                            <tr>
+                                <th>Actividad</th>
+                                <th>Observaciones</th>
+                                <th>Duración</th>
+                                <th>Inicio</th>
+                                <th>Fechas</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div id="sidebar-info" class="is-hidden"></div>
+        </div>
+
+        <div id="gantt-row" class="gantt-row">
+            <div id="gantt-container" class="gantt-container"></div>
+        </div>
     </section>
 
-    <section class="smartmap-panel">
-        <div class="smartmap-panel-header">
-            <h3>Smart Map en Vivo</h3>
-            <div class="smartmap-actions-row">
-                <button id="btnSimularSmartMap" onclick="simularMovimientoSmartMap(this)" class="map-button map-button-warning">
-                    Simular Telemetría
-                </button>
-                <button id="btnPruebaCorreo" onclick="probarCorreoSmartMap(this)" class="map-button map-button-info">
-                    Probar Correo
-                </button>
-            </div>
-        </div>
-        <div class="smartmap-kpis">
-            <div class="smartmap-kpi-item">
-                <span class="smartmap-kpi-label">Unidades activas</span>
-                <strong id="smartmap-kpi-unidades">0</strong>
-            </div>
-            <div class="smartmap-kpi-item">
-                <span class="smartmap-kpi-label">Velocidad promedio</span>
-                <strong id="smartmap-kpi-velocidad">0 km/h</strong>
-            </div>
-            <div class="smartmap-kpi-item">
-                <span class="smartmap-kpi-label">Alertas activas</span>
-                <strong id="smartmap-kpi-alertas">0</strong>
-            </div>
-            <div class="smartmap-kpi-item">
-                <span class="smartmap-kpi-label">Última actualización</span>
-                <strong id="smartmap-kpi-updated">--</strong>
-            </div>
-        </div>
-        <div id="smartmap-alertas-lista" class="smartmap-alertas-lista">
-            <p class="smartmap-empty">Cargando alertas...</p>
-        </div>
 
-        <hr class="smartmap-divider">
-
-        <div class="smartmap-panel-header">
-            <h3>Reglas de Alertas</h3>
-        </div>
-
-        <form class="smartmap-reglas-form" onsubmit="crearReglaSmartMap(event)">
-            <input id="regla-nombre" type="text" placeholder="Nombre de regla" required>
-            <select id="regla-tipo" required>
-                <option value="velocidad_mayor">Velocidad mayor que</option>
-                <option value="bateria_menor">Batería menor que</option>
-            </select>
-            <input id="regla-umbral" type="number" step="0.1" placeholder="Umbral" required>
-            <select id="regla-severidad" required>
-                <option value="baja">Baja</option>
-                <option value="media" selected>Media</option>
-                <option value="alta">Alta</option>
-            </select>
-            <button id="btnCrearRegla" class="map-button map-button-info" type="submit">Crear Regla</button>
-        </form>
-
-        <div id="smartmap-reglas-lista" class="smartmap-reglas-lista">
-            <p class="smartmap-empty">Cargando reglas...</p>
-        </div>
-
-        {% if es_admin %}
-        <hr class="smartmap-divider">
-
-        <div class="smartmap-panel-header">
-            <h3>Tipos de Alerta</h3>
-        </div>
-
-        <form class="smartmap-reglas-form" onsubmit="crearTipoAlerta(event)">
-            <input id="tipo-alerta-nombre" type="text" placeholder="Nombre del tipo de alerta" required>
-            <input id="tipo-alerta-descripcion" type="text" placeholder="Descripción">
-            <div></div>
-            <div></div>
-            <button id="btnCrearTipoAlerta" class="map-button map-button-info" type="submit">Crear Tipo</button>
-        </form>
-
-        <div id="tipos-alerta-lista" class="smartmap-reglas-lista">
-            <p class="smartmap-empty">Cargando tipos de alerta...</p>
-        </div>
-        {% endif %}
-    </section>
 
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
     <script src="https://api.mapbox.com/mapbox.js/plugins/leaflet-omnivore/v0.3.1/leaflet-omnivore.min.js"></script>
     <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.umd.js"></script>
 
     <script src="{{ url_for('static', filename='js/mapa.js') }}"></script>
     <script src="{{ url_for('static', filename='js/mapa_autoguardado.js') }}"></script>
     <script src="{{ url_for('static', filename='js/mapa_vigilancia.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/calendario_gantt.js') }}"></script>
 
 </body>
 

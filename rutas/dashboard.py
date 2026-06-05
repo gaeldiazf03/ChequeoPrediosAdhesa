@@ -20,16 +20,25 @@ def index():
     if session.get('rol') == 'admin':
         for reporte in db.obtener_reportes_programados():
             destinatarios_raw = reporte[3] or ''
+            formato_raw = reporte[4] or ''
             try:
                 destinatarios = json.loads(destinatarios_raw) if destinatarios_raw else []
             except Exception:
                 destinatarios = [x.strip() for x in str(destinatarios_raw).replace(';', ',').split(',') if x.strip()]
+            try:
+                formatos = json.loads(formato_raw) if formato_raw and str(formato_raw).strip().startswith('[') else []
+            except Exception:
+                formatos = [x.strip().lower() for x in str(formato_raw).replace(';', ',').split(',') if x.strip()]
+            if not isinstance(formatos, list):
+                formatos = [str(formatos).strip().lower()] if str(formatos).strip() else []
+            formatos = [x for x in formatos if x]
             reportes_programados.append({
                 'id': reporte[0],
                 'nombre': reporte[1],
                 'frecuencia_dias': reporte[2],
                 'destinatarios': destinatarios,
-                'formato': reporte[4],
+                'formato': formatos,
+                'formato_texto': ' + '.join(f.upper() for f in formatos) if formatos else 'CSV',
                 'activo': bool(reporte[5]),
                 'creado_por': reporte[6],
                 'creado_en': reporte[7],
@@ -241,15 +250,34 @@ def programar_reporte_actividad():
         frecuencia_dias = int(request.form.get('frecuencia_dias', '5'))
     except Exception:
         frecuencia_dias = 5
-    if frecuencia_dias not in (3, 5):
+    if frecuencia_dias < 1:
         frecuencia_dias = 5
 
-    formato = (request.form.get('formato') or 'csv').strip().lower()
-    if formato not in ('csv', 'word'):
-        formato = 'csv'
+    formatos = request.form.getlist('formatos')
+    if not formatos:
+        formato_unico = (request.form.get('formato') or '').strip().lower()
+        if formato_unico:
+            formatos = [formato_unico]
+    formatos_normalizados = []
+    for formato in formatos:
+        formato = (formato or '').strip().lower()
+        if formato in ('csv', 'word') and formato not in formatos_normalizados:
+            formatos_normalizados.append(formato)
+    if not formatos_normalizados:
+        formatos_normalizados = ['csv']
+
+    usuarios_seleccionados = request.form.getlist('destinatarios_usuarios')
+    usuarios_por_id = {}
+    for usuario in db.obtener_todos_los_usuarios():
+        correo = usuario[11] if len(usuario) > 11 else None
+        if correo:
+            usuarios_por_id[str(usuario[0])] = correo.strip()
+
+    destinatarios = [usuarios_por_id[user_id] for user_id in usuarios_seleccionados if usuarios_por_id.get(str(user_id))]
 
     destinatarios_txt = (request.form.get('destinatarios') or '').strip()
-    destinatarios = [x.strip() for x in destinatarios_txt.replace(';', ',').split(',') if x.strip()]
+    destinatarios.extend([x.strip() for x in destinatarios_txt.replace(';', ',').split(',') if x.strip()])
+    destinatarios = list(dict.fromkeys(destinatarios))
     if not destinatarios:
         destinatarios = db.obtener_correos_usuarios()
 
@@ -268,11 +296,11 @@ def programar_reporte_actividad():
         nombre,
         frecuencia_dias,
         json.dumps(destinatarios, ensure_ascii=False),
-        formato=formato,
+        formato=json.dumps(formatos_normalizados, ensure_ascii=False),
         creado_por=session.get('usuario')
     )
     if reporte_id:
-        db.registrar_log(session.get('usuario'), 'Programar reporte actividad', f'ID: {reporte_id}, frecuencia={frecuencia_dias}, formato={formato}, destinatarios={len(destinatarios)}')
+        db.registrar_log(session.get('usuario'), 'Programar reporte actividad', f'ID: {reporte_id}, frecuencia={frecuencia_dias}, formatos={"+".join(formatos_normalizados)}, destinatarios={len(destinatarios)}')
     return redirect(url_for('dashboard.index'))
 
 

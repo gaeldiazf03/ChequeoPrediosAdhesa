@@ -1,8 +1,15 @@
 {% extends "dashboard_main.html" %}
+
+{% block title %}Gestión de Planes{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/planes.css') }}">
+{% endblock %}
+
 {% block content %}
 <div class="container">
   <h2>Gestión de Planes</h2>
-  <div style="margin-bottom:10px;">
+  <div class="admin-actions">
     <button id="btnAgregarPlan" class="btn btn-primary">Agregar Plan</button>
   </div>
 
@@ -21,7 +28,7 @@
     <tbody></tbody>
   </table>
 
-  <div id="modalPlan" class="modal" style="display:none;">
+  <div id="modalPlan" class="modal">
     <div class="modal-dialog">
       <div class="modal-content">
         <div class="modal-header">
@@ -59,5 +66,8 @@
 
 </div>
 
+{% endblock %}
+
+{% block extra_js %}
 <script src="/static/js/admin_planes.js"></script>
 {% endblock %}

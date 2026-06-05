@@ -1,8 +1,15 @@
 {% extends "dashboard_main.html" %}
+
+{% block title %}Gestión de Tractores{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tractores.css') }}">
+{% endblock %}
+
 {% block content %}
 <div class="container">
   <h2>Gestión de Tractores</h2>
-  <div style="margin-bottom:10px;">
+  <div class="admin-actions">
     <button id="btnAgregarTractor" class="btn btn-primary">Agregar Tractor</button>
   </div>
 
@@ -22,7 +29,7 @@
   </table>
 
   <!-- Modal simple -->
-  <div id="modalTractor" class="modal" tabindex="-1" role="dialog" style="display:none;">
+  <div id="modalTractor" class="modal" tabindex="-1" role="dialog">
     <div class="modal-dialog" role="document">
       <div class="modal-content">
         <div class="modal-header">
@@ -60,6 +67,8 @@
 
 </div>
 
-<link rel="stylesheet" href="/static/css/admin_tractores.css">
+{% endblock %}
+
+{% block extra_js %}
 <script src="/static/js/admin_tractores.js"></script>
 {% endblock %}

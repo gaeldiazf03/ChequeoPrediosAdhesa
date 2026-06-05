@@ -9,7 +9,7 @@ from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 from database import db
-from services.notificaciones import correo_habilitado_para, enviar_correo_con_adjunto
+from services.notificaciones import correo_habilitado_para, enviar_correo_con_adjuntos
 from services.reportes import generar_csv_logs
 
 
@@ -34,6 +34,25 @@ def _parse_destinatarios(destinatarios_json):
     return [parte.strip() for parte in texto.split(',') if parte.strip()]
 
 
+def _parse_formatos(formato_json):
+    if not formato_json:
+        return ['csv']
+    texto = str(formato_json).strip()
+    if not texto:
+        return ['csv']
+    if texto.startswith('['):
+        try:
+            import json
+            datos = json.loads(texto)
+            formatos = [str(item).strip().lower() for item in datos if str(item).strip()]
+            return formatos or ['csv']
+        except Exception:
+            pass
+    texto = texto.replace(';', ',')
+    formatos = [parte.strip().lower() for parte in texto.split(',') if parte.strip()]
+    return formatos or ['csv']
+
+
 def _obtener_destinatarios_finales(reporte):
     destinatarios = _parse_destinatarios(reporte['destinatarios_json'])
     if destinatarios:
@@ -47,6 +66,7 @@ def _obtener_destinatarios_finales(reporte):
 
 def _construir_resumen_reporte(reporte):
     dias = int(reporte['frecuencia_dias'])
+    formatos = _parse_formatos(reporte['formato'])
     fecha_inicio_dt = datetime.now() - timedelta(days=dias)
     fecha_inicio = fecha_inicio_dt.strftime('%Y-%m-%d %H:%M:%S')
     logs = db.obtener_logs_desde(fecha_inicio)
@@ -79,8 +99,9 @@ def _construir_resumen_reporte(reporte):
     ]
 
     asunto = f"Reporte programado de actividad - últimos {dias} días"
+    adjuntos = []
 
-    if str(reporte.get('formato', 'csv')).lower() == 'word':
+    if 'word' in formatos:
         doc = Document()
         titulo = doc.add_heading('Reporte Programado de Actividad', 0)
         titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -101,17 +122,16 @@ def _construir_resumen_reporte(reporte):
         doc.add_heading('Eventos del periodo', level=1)
         for fila in logs[:20]:
             doc.add_paragraph(f"{fila['fecha']} | {fila['usuario']} | {fila['accion']} | {fila['detalles']}", style='List Bullet')
-        adjunto = io.BytesIO()
-        doc.save(adjunto)
-        adjunto.seek(0)
-        nombre_adjunto = f"reporte_actividad_{dias}d_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
-        mimetype = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    else:
-        adjunto = generar_csv_logs(logs_csv)
-        nombre_adjunto = f"reporte_actividad_{dias}d_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        mimetype = 'text/csv'
+        adjunto_word = io.BytesIO()
+        doc.save(adjunto_word)
+        adjunto_word.seek(0)
+        adjuntos.append((adjunto_word, f"reporte_actividad_{dias}d_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx", 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'))
 
-    return asunto, '\n'.join(cuerpo), adjunto, nombre_adjunto, mimetype, _obtener_destinatarios_finales(reporte)
+    if 'csv' in formatos:
+        adjunto_csv = generar_csv_logs(logs_csv)
+        adjuntos.append((adjunto_csv, f"reporte_actividad_{dias}d_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv", 'text/csv'))
+
+    return asunto, '\n'.join(cuerpo), adjuntos, _obtener_destinatarios_finales(reporte)
 
 
 def _procesar_reportes_programados():
@@ -122,8 +142,8 @@ def _procesar_reportes_programados():
             if not correo_habilitado_para(destinatarios):
                 continue
 
-            asunto, cuerpo, adjunto, nombre_adjunto, mimetype, destinatarios = _construir_resumen_reporte(reporte)
-            envio = enviar_correo_con_adjunto(asunto, cuerpo, destinatarios, adjunto, nombre_adjunto, mimetype)
+            asunto, cuerpo, adjuntos, destinatarios = _construir_resumen_reporte(reporte)
+            envio = enviar_correo_con_adjuntos(asunto, cuerpo, destinatarios, adjuntos)
             if envio.get('ok'):
                 ahora = datetime.now()
                 proximo_envio = (ahora + timedelta(days=int(reporte['frecuencia_dias']))).strftime('%Y-%m-%d %H:%M:%S')

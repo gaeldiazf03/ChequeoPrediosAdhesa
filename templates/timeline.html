@@ -1,255 +1,12 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Timeline - {{ slot[1] }} - Plataforma Agrónómica</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #f9fafb;
-            color: #1f2937;
-            padding: 20px;
-        }
-
-        .timeline-header {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 30px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        }
-
-        .timeline-header h1 {
-            margin: 0 0 10px 0;
-            font-size: 28px;
-        }
-
-        .timeline-header p {
-            color: #6b7280;
-            margin: 0;
-        }
-
-        .timeline-container {
-            max-width: 900px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 12px;
-            padding: 40px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        }
-
-        .timeline {
-            position: relative;
-            padding: 20px 0;
-        }
-
-        .timeline::before {
-            content: '';
-            position: absolute;
-            left: 31px;
-            top: 0;
-            bottom: 0;
-            width: 2px;
-            background: #e5e7eb;
-        }
-
-        .timeline-item {
-            margin-bottom: 30px;
-            position: relative;
-            padding-left: 80px;
-        }
-
-        .timeline-item::before {
-            content: '';
-            position: absolute;
-            left: 12px;
-            top: 2px;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: white;
-            border: 3px solid #e5e7eb;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .timeline-item.pendiente::before {
-            border-color: #f59e0b;
-            background: rgba(245, 158, 11, 0.1);
-        }
-
-        .timeline-item.en_progreso::before {
-            border-color: #3b82f6;
-            background: rgba(59, 130, 246, 0.1);
-        }
-
-        .timeline-item.completada::before {
-            border-color: #10b981;
-            background: rgba(16, 185, 129, 0.1);
-        }
-
-        .timeline-item.cancelada::before {
-            border-color: #ef4444;
-            background: rgba(239, 68, 68, 0.1);
-        }
-
-        .timeline-content {
-            background: #f9fafb;
-            border-radius: 8px;
-            padding: 16px;
-            border-left: 4px solid #e5e7eb;
-        }
-
-        .timeline-item.pendiente .timeline-content {
-            border-left-color: #f59e0b;
-        }
-
-        .timeline-item.en_progreso .timeline-content {
-            border-left-color: #3b82f6;
-        }
-
-        .timeline-item.completada .timeline-content {
-            border-left-color: #10b981;
-        }
-
-        .timeline-item.cancelada .timeline-content {
-            border-left-color: #ef4444;
-        }
-
-        .timeline-title {
-            font-weight: 600;
-            margin: 0 0 8px 0;
-            font-size: 16px;
-        }
-
-        .timeline-details {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            font-size: 13px;
-            color: #6b7280;
-            margin: 8px 0;
-        }
-
-        .timeline-detail {
-            display: flex;
-            justify-content: space-between;
-        }
-
-        .timeline-detail strong {
-            color: #374151;
-        }
-
-        .timeline-actions {
-            margin-top: 12px;
-            display: flex;
-            gap: 8px;
-        }
-
-        .btn {
-            padding: 6px 12px;
-            border: none;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-            transition: all 0.2s;
-        }
-
-        .btn-primary {
-            background: #667eea;
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: #5568d3;
-        }
-
-        .btn-success {
-            background: #10b981;
-            color: white;
-        }
-
-        .btn-success:hover {
-            background: #059669;
-        }
-
-        .btn-danger {
-            background: #ef4444;
-            color: white;
-        }
-
-        .btn-danger:hover {
-            background: #dc2626;
-        }
-
-        .status-badge {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-
-        .status-badge.pendiente {
-            background: rgba(245, 158, 11, 0.1);
-            color: #f59e0b;
-        }
-
-        .status-badge.en_progreso {
-            background: rgba(59, 130, 246, 0.1);
-            color: #3b82f6;
-        }
-
-        .status-badge.completada {
-            background: rgba(16, 185, 129, 0.1);
-            color: #10b981;
-        }
-
-        .status-badge.cancelada {
-            background: rgba(239, 68, 68, 0.1);
-            color: #ef4444;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: #9ca3af;
-        }
-
-        .error {
-            background: #fee2e2;
-            border: 1px solid #fecaca;
-            border-radius: 8px;
-            padding: 15px;
-            color: #dc2626;
-            margin-bottom: 20px;
-        }
-
-        .back-link {
-            display: inline-block;
-            margin-bottom: 20px;
-            color: #667eea;
-            text-decoration: none;
-            font-size: 14px;
-        }
-
-        .back-link:hover {
-            text-decoration: underline;
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/common.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/timeline.css') }}">
 </head>
 
 <body>
@@ -292,7 +49,7 @@
             const container = document.getElementById('timeline-container');
             
             if (actividades.length === 0) {
-                container.innerHTML = '<p style="text-align: center; color: #9ca3af; padding: 40px;">No hay actividades programadas para este lote</p>';
+                container.innerHTML = '<p class="timeline-empty-state">No hay actividades programadas para este lote</p>';
                 return;
             }
             
@@ -348,7 +105,7 @@
                                 </div>
                             </div>
                             
-                            ${act.descripcion ? `<p style="font-size: 13px; color: #6b7280; margin: 8px 0 0 0;">${act.descripcion}</p>` : ''}
+                            ${act.descripcion ? `<p class="timeline-description">${act.descripcion}</p>` : ''}
                             
                             <div class="timeline-actions">
                                 ${botonesHtml}
@@ -403,3 +160,5 @@
 </body>
 
 </html>
+
+

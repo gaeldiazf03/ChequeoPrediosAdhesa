@@ -4,11 +4,12 @@ from utils.funciones import convertir_geojson_a_kml
 from utils.funciones import convertir_kml_a_geojson
 import io
 from datetime import datetime
-from services.reportes import generar_csv_logs, generar_csv_mapa, generar_word_mapa
+from services.reportes import generar_csv_logs, generar_csv_mapa, generar_excel_avance_por_predio, generar_word_mapa
 from services.seguridad import require_permission
 from services.notificaciones import enviar_alerta_email, correo_habilitado, enviar_correo_con_adjunto
 from services.multicanal import enviar_multicanal
 from services.multicanal import enviar_telegram
+from services.clima import servicio_clima
 import json
 import random
 import os
@@ -18,10 +19,18 @@ import urllib.error
 import ssl
 
 mapa_bp = Blueprint('mapa', __name__)
+SMARTMAP_ALERTAS_HABILITADO = os.environ.get('ENABLE_SMARTMAP_ALERTS', '0') == '1'
 
 # Telemetría viva en memoria para evitar write-locks continuos en SQLite.
 posiciones_flota = {}
 posiciones_flota_lock = threading.Lock()
+
+
+def _smartmap_desactivado_response():
+    return jsonify({
+        'ok': False,
+        'error': 'Modulo SmartMap desactivado por reestructuracion del sistema.'
+    }), 410
 
 
 def _actualizar_cache_flotas(slot_id, unidad_id, lat, lng, velocidad_kmh=0, estado_motor='encendido', nivel_bateria=None, metadata_json=''):
@@ -443,11 +452,6 @@ def mis_permisos():
         "puede_descargar_logs": rol == 'admin' or bool(db_desc_logs)
     }
 
-    resp = make_response('\ufeff' + csv_str)
-    resp.headers["Content-Disposition"] = f"attachment; filename={nombre_archivo}"
-    resp.headers["Content-type"] = "text/csv; charset=utf-8"
-    return resp
-
 @mapa_bp.route('/api/reporte_word/<int:slot_id>', methods=['POST'])
 def reporte_word(slot_id):
     if not session.get('logeado'): return "No autorizado", 401
@@ -462,6 +466,32 @@ def reporte_word(slot_id):
         download_name=nombre_archivo,
         mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     )
+
+
+@mapa_bp.route('/api/reporte_mapa/<int:slot_id>', methods=['POST'])
+def reporte_mapa(slot_id):
+    if not session.get('logeado'): return "No autorizado", 401
+
+    usuario = session.get('usuario')
+    rol, db_agregar, db_editar, db_agregar_tar, db_marcar_tar, db_costos, db_desc_mapa, db_desc_logs = db.obtener_permisos_usuario(usuario)
+    if rol != 'admin' and not bool(db_desc_logs):
+        return jsonify({'ok': False, 'error': 'Sin permisos para descargar logs'}), 403
+
+    data = request.get_json(silent=True)
+    if not data:
+        return "Sin datos", 400
+
+    try:
+        target, nombre_archivo = generar_excel_avance_por_predio(data, slot_id)
+        resp = send_file(
+            target,
+            as_attachment=True,
+            download_name=nombre_archivo,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        return resp
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
 
 
 @mapa_bp.route('/api/reporte_email/<int:slot_id>', methods=['POST'])
@@ -623,6 +653,8 @@ def _evaluar_reglas_y_generar_alertas(slot_id, unidad_id, velocidad, bateria):
 @require_permission('ver_mapa')
 def smartmap_telemetria(slot_id):
     """Retorna última posición de unidades del lote para visualización en tiempo real."""
+    if not SMARTMAP_ALERTAS_HABILITADO:
+        return _smartmap_desactivado_response()
     try:
         _seed_reglas_demo(slot_id, session.get('username', 'sistema'))
 
@@ -662,6 +694,8 @@ def smartmap_sync_unidades(slot_id):
     Variables esperadas: `UNITS_API_URL` y opcional `UNITS_API_KEY`.
     El endpoint acepta JSON con una lista de unidades cuando se desea subir manualmente.
     """
+    if not SMARTMAP_ALERTAS_HABILITADO:
+        return _smartmap_desactivado_response()
     try:
         payload = request.get_json(silent=True)
         unidades_origen = None
@@ -751,6 +785,8 @@ def _sync_unidades_internal(slot_id, unidades_origen=None):
 
 # Scheduler ligero para sincronización de unidades (opcional, activar con ENABLE_UNITS_SYNC=1)
 def _start_units_sync_scheduler():
+    if not SMARTMAP_ALERTAS_HABILITADO:
+        return
     import threading, time
     def worker():
         interval = int(os.environ.get('UNITS_SYNC_INTERVAL', '60'))
@@ -779,6 +815,8 @@ def _start_units_sync_scheduler():
 @mapa_bp.route('/api/smartmap/notificaciones/telegram/prueba/<int:slot_id>', methods=['POST'])
 def telegram_prueba(slot_id):
     """Endpoint de prueba para enviar notificación por Telegram."""
+    if not SMARTMAP_ALERTAS_HABILITADO:
+        return _smartmap_desactivado_response()
     try:
         usuario = session.get('username', 'sistema') if session.get('username') else 'sistema'
         mensaje = f"Prueba Telegram - slot {slot_id} - usuario: {usuario} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
@@ -795,6 +833,8 @@ def telegram_prueba(slot_id):
 
 @mapa_bp.route('/api/smartmap/notificaciones/prueba_multicanal/<int:slot_id>', methods=['POST'])
 def prueba_multicanal(slot_id):
+    if not SMARTMAP_ALERTAS_HABILITADO:
+        return _smartmap_desactivado_response()
     try:
         payload_alerta = {
             'slot_id': slot_id,
@@ -835,6 +875,8 @@ _start_units_sync_scheduler()
 @require_permission('generar_alertas')
 def smartmap_simular_movimiento(slot_id):
     """Simula movimiento de unidades y genera alertas automáticas básicas."""
+    if not SMARTMAP_ALERTAS_HABILITADO:
+        return _smartmap_desactivado_response()
     try:
         _seed_reglas_demo(slot_id, session.get('username', 'sistema'))
         # TODO: Cuando la API real de unidades esté lista, este endpoint deberá consumirla
@@ -859,6 +901,8 @@ def smartmap_simular_movimiento(slot_id):
 @require_permission('ver_alertas')
 def smartmap_alertas(slot_id):
     """Retorna alertas activas del Smart Map para un lote."""
+    if not SMARTMAP_ALERTAS_HABILITADO:
+        return _smartmap_desactivado_response()
     try:
         limite = int(request.args.get('limite', 20))
         alertas = db.obtener_alertas_activas(slot_id=slot_id, limite=limite)
@@ -883,6 +927,8 @@ def smartmap_alertas(slot_id):
 @require_permission('generar_alertas')
 def smartmap_atender_alerta(alerta_id):
     """Marca una alerta como atendida."""
+    if not SMARTMAP_ALERTAS_HABILITADO:
+        return _smartmap_desactivado_response()
     try:
         usuario = session.get('username', 'desconocido')
         ok = db.atender_alerta(alerta_id, atendida_por=usuario)
@@ -899,6 +945,8 @@ def smartmap_atender_alerta(alerta_id):
 @require_permission('ver_alertas')
 def smartmap_reglas(slot_id):
     """Obtiene reglas configuradas para el lote."""
+    if not SMARTMAP_ALERTAS_HABILITADO:
+        return _smartmap_desactivado_response()
     try:
         _seed_reglas_demo(slot_id, session.get('username', 'sistema'))
         reglas = db.obtener_reglas_alerta(slot_id)
@@ -923,6 +971,8 @@ def smartmap_reglas(slot_id):
 @require_permission('generar_alertas')
 def smartmap_crear_regla(slot_id):
     """Crea una nueva regla de alerta para el lote."""
+    if not SMARTMAP_ALERTAS_HABILITADO:
+        return _smartmap_desactivado_response()
     try:
         payload = request.get_json(silent=True) or {}
         nombre = (payload.get('nombre') or '').strip()
@@ -961,6 +1011,8 @@ def smartmap_crear_regla(slot_id):
 @require_permission('generar_alertas')
 def smartmap_toggle_regla(regla_id):
     """Activa o desactiva una regla de alerta."""
+    if not SMARTMAP_ALERTAS_HABILITADO:
+        return _smartmap_desactivado_response()
     try:
         payload = request.get_json(silent=True) or {}
         activa = bool(payload.get('activa'))
@@ -978,6 +1030,8 @@ def smartmap_toggle_regla(regla_id):
 @require_permission('ver_alertas')
 def smartmap_tipos_alerta():
     """Obtiene el catálogo de tipos de alerta."""
+    if not SMARTMAP_ALERTAS_HABILITADO:
+        return _smartmap_desactivado_response()
     try:
         tipos = db.obtener_tipos_alerta()
         data = [{
@@ -997,6 +1051,8 @@ def smartmap_tipos_alerta():
 @require_permission('generar_alertas')
 def smartmap_crear_tipo_alerta():
     """Crea un tipo de alerta. Reservado para administradores."""
+    if not SMARTMAP_ALERTAS_HABILITADO:
+        return _smartmap_desactivado_response()
     try:
         if session.get('rol') != 'admin':
             return jsonify({'error': 'Acceso denegado'}), 403
@@ -1019,6 +1075,8 @@ def smartmap_crear_tipo_alerta():
 @require_permission('generar_alertas')
 def smartmap_eliminar_tipo_alerta(tipo_alerta_id):
     """Elimina un tipo de alerta. Reservado para administradores."""
+    if not SMARTMAP_ALERTAS_HABILITADO:
+        return _smartmap_desactivado_response()
     try:
         if session.get('rol') != 'admin':
             return jsonify({'error': 'Acceso denegado'}), 403
@@ -1037,6 +1095,8 @@ def smartmap_eliminar_tipo_alerta(tipo_alerta_id):
 @require_permission('generar_alertas')
 def smartmap_enviar_prueba_email(slot_id):
     """Envía correo de prueba para validar configuración SMTP de alertas."""
+    if not SMARTMAP_ALERTAS_HABILITADO:
+        return _smartmap_desactivado_response()
     try:
         payload = {
             'slot_id': slot_id,
@@ -1064,5 +1124,48 @@ def smartmap_enviar_prueba_email(slot_id):
 
         db.registrar_log(usuario_log, 'Prueba correo SmartMap', f'Slot {slot_id}')
         return jsonify({'ok': True, 'estado': 'en_proceso', 'destinatarios': db.obtener_correos_usuarios()}), 202
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============= CLIMA API =============
+@mapa_bp.route('/api/clima/<float:lat>/<float:lon>', methods=['GET'])
+def obtener_clima(lat, lon):
+    """
+    Obtiene datos de clima para coordenadas específicas.
+    Fuente: Open-Meteo API (gratuita, sin autenticación)
+
+    Args:
+        lat: Latitud en grados decimales
+        lon: Longitud en grados decimales
+
+    Returns:
+        JSON con: temperatura, humedad, probabilidad_lluvia, zona_horaria, actualizado_en
+    """
+    try:
+        # Validar rangos de coordenadas
+        if lat < -90 or lat > 90 or lon < -180 or lon > 180:
+            return jsonify({'error': 'Coordenadas inválidas'}), 400
+
+        datos = servicio_clima.obtener_clima(lat, lon)
+        return jsonify(datos), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@mapa_bp.route('/api/clima_interpretacion/<int:codigo>', methods=['GET'])
+def interpretacion_clima(codigo):
+    """
+    Interpreta un código de clima WMO (World Meteorological Organization).
+
+    Args:
+        codigo: Código WMO del clima (0-99)
+
+    Returns:
+        JSON con: nombre, descripcion, emoji
+    """
+    try:
+        datos = servicio_clima.interpretacion_clima(codigo)
+        return jsonify(datos), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500

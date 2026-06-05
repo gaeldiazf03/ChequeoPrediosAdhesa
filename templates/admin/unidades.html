@@ -2,6 +2,10 @@
 
 {% block title %}Unidades detectadas{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/unidades.css') }}">
+{% endblock %}
+
 {% block content %}
 <div class="container">
   <h2>Unidades detectadas</h2>
@@ -10,11 +14,11 @@
     <select id="slotSelect"></select>
     <button id="cargarBtn">Cargar unidades</button>
   </div>
-  <div style="margin-top:10px;">
+  <div class="upload-actions">
     <input type="file" id="uploadInput" accept=".csv" />
     <button id="uploadBtn">Subir mapeo CSV</button>
     <button id="bulkVincularBtn">Vincular seleccionadas</button>
-    <small style="display:block;color:#666;margin-top:6px">CSV esperado: unidad_id,tractor_id (con o sin encabezado)</small>
+    <small class="csv-help">CSV esperado: unidad_id,tractor_id (con o sin encabezado)</small>
   </div>
   <table id="unidadesTable" class="table">
     <thead>
@@ -33,5 +37,8 @@
     <tbody></tbody>
   </table>
 </div>
+{% endblock %}
+
+{% block extra_js %}
 <script src="/static/js/admin_unidades.js"></script>
 {% endblock %}

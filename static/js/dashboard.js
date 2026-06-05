@@ -52,6 +52,71 @@ function mostrarSpinnerYEnviar(inputElement) {
     }
 }
 
+function inicializarSelectorDestinatarios() {
+    var picker = document.querySelector('[data-recipient-picker]');
+    if (!picker) {
+        return;
+    }
+
+    var select = picker.querySelector('#recipient-user-select');
+    var chipsContainer = picker.querySelector('[data-recipient-chips]');
+    var hiddenInputsContainer = picker.querySelector('[data-recipient-hidden-inputs]');
+    if (!select || !chipsContainer || !hiddenInputsContainer) {
+        return;
+    }
+
+    var selectedUsers = new Map();
+
+    function renderChips() {
+        chipsContainer.innerHTML = '';
+        hiddenInputsContainer.innerHTML = '';
+
+        selectedUsers.forEach(function(userData, userId) {
+            var chip = document.createElement('span');
+            chip.className = 'recipient-chip';
+            chip.innerHTML = '<span>' + userData.name + ' (' + userData.email + ')</span>';
+
+            var removeButton = document.createElement('button');
+            removeButton.type = 'button';
+            removeButton.setAttribute('aria-label', 'Eliminar ' + userData.name);
+            removeButton.textContent = '×';
+            removeButton.addEventListener('click', function() {
+                selectedUsers.delete(userId);
+                renderChips();
+            });
+
+            chip.appendChild(removeButton);
+            chipsContainer.appendChild(chip);
+
+            var hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.name = 'destinatarios_usuarios';
+            hiddenInput.value = userId;
+            hiddenInputsContainer.appendChild(hiddenInput);
+        });
+    }
+
+    select.addEventListener('change', function() {
+        var option = select.options[select.selectedIndex];
+        if (!option || !option.value) {
+            return;
+        }
+
+        var userId = option.value;
+        if (!selectedUsers.has(userId)) {
+            selectedUsers.set(userId, {
+                name: option.getAttribute('data-name') || option.textContent.trim(),
+                email: option.getAttribute('data-email') || ''
+            });
+            renderChips();
+        }
+
+        select.value = '';
+    });
+
+    renderChips();
+}
+
 // Lógica para cerrar los modales si se hace clic en el área oscura del fondo
 window.onclick = function(event) {
     var modalEliminar = document.getElementById("modalEliminar");
@@ -66,3 +131,5 @@ window.onclick = function(event) {
         cerrarModalCorreo();
     }
 }
+
+document.addEventListener('DOMContentLoaded', inicializarSelectorDestinatarios);

@@ -101,6 +101,14 @@ def enviar_alerta_email(alerta):
 
 
 def enviar_correo_con_adjunto(asunto, cuerpo, destinatarios, adjunto_bytes, nombre_adjunto, mimetype='application/octet-stream'):
+    if adjunto_bytes is None:
+        adjuntos = []
+    else:
+        adjuntos = [(adjunto_bytes, nombre_adjunto, mimetype)]
+    return enviar_correo_con_adjuntos(asunto, cuerpo, destinatarios, adjuntos)
+
+
+def enviar_correo_con_adjuntos(asunto, cuerpo, destinatarios, adjuntos):
     cfg = _obtener_config_smtp()
     destinatarios = [d.strip() for d in (destinatarios or []) if d and d.strip()]
 
@@ -117,8 +125,11 @@ def enviar_correo_con_adjunto(asunto, cuerpo, destinatarios, adjunto_bytes, nomb
     msg['To'] = ', '.join(destinatarios)
     msg.set_content(cuerpo)
 
-    if adjunto_bytes is not None:
+    for adjunto in adjuntos or []:
         try:
+            adjunto_bytes, nombre_adjunto, mimetype = adjunto
+            if adjunto_bytes is None:
+                continue
             if isinstance(adjunto_bytes, str):
                 adjunto_bytes = adjunto_bytes.encode('utf-8')
             if '/' in mimetype:

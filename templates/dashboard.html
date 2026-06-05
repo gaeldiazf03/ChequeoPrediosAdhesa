@@ -4,6 +4,7 @@
 <head>
     <meta charset="UTF-8" />
     <title>Dashboard - Selección Mapa</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/common.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
 </head>
 
@@ -13,9 +14,11 @@
         <p class="spinner-text">Cargando mapa, por favor espera...</p>
     </div>
 
-    <h1>Selecciona un Slot de Trabajo</h1>
-    <div class="page-actions">
-        <a href="/logout" class="btn btn-secondary btn-auto">Cerrar Sesión</a>
+    <div class="dashboard-header-row">
+        <h1>Selecciona un Slot de Trabajo</h1>
+        <div class="page-actions">
+            <a href="/logout" class="btn btn-secondary btn-auto logout-btn">Cerrar Sesión</a>
+        </div>
     </div>
 
     <div class="slots-container">
@@ -51,31 +54,31 @@
     {% if rol_actual == 'admin' %}
     <hr class="section-divider" />
 
-    <div class="panel-card">
-        <h2>Panel de Administración de Usuarios</h2>
-        <p class="panel-help">Activa los permisos de descarga para decidir quién puede bajar CSV de avances o logs.</p>
+    <div class="panel-card admin-users-panel">
+        <div class="admin-users-form">
+            <h2>Panel de Administración de Usuarios</h2>
 
-        <form action="/admin/crear_usuario" method="POST" class="inline-form">
-            <input type="text" name="nuevo_usuario" placeholder="Nombre de usuario" required class="field-input" />
-            <input type="password" name="nueva_password" placeholder="Contraseña" required class="field-input" />
-            <input type="email" name="nuevo_correo" placeholder="Correo opcional" class="field-input" />
-            <button type="submit" class="btn btn-success btn-auto">+ Crear Usuario</button>
-        </form>
-        <p class="panel-help">El correo es opcional. Si se captura, podrá usarse para enviar reportes por email.</p>
+            <form action="/admin/crear_usuario" method="POST" class="inline-form">
+                <input type="text" name="nuevo_usuario" placeholder="Nombre de usuario" required class="field-input field-input-compact" />
+                <input type="password" name="nueva_password" placeholder="Contraseña" required class="field-input field-input-compact" />
+                <input type="email" name="nuevo_correo" placeholder="Correo (Opcional)" class="field-input field-input-wide" />
+                <button type="submit" class="btn btn-success btn-auto admin-create-btn">+ Crear Usuario</button>
+            </form>
+        </div>
+        
 
-        <div class="admin-table-container">
-        <table class="admin-table">
+        <div class="admin-users-table-wrap">
+        <table class="admin-table admin-users-table">
             <thead>
                 <tr>
                     <th>Usuario</th>
                     <th>Correo</th>
-                    <th>Rol</th>
                     <th class="text-center">Gestión de Lotes</th>
                     <th class="text-center">Gestión de Tareas</th>
                     <th class="text-center">Control de Costos</th>
                     <th class="text-center">Descargar CSV (Mapa)</th>
                     <th class="text-center">Descargar CSV (Logs)</th>
-                    <th class="text-right">Acciones</th>
+                    <th class="text-center">Acciones</th>
                 </tr>
             </thead>
             <tbody>
@@ -83,7 +86,6 @@
                 <tr>
                     <td class="admin-user">{{ u[1] }}</td>
                     <td class="admin-email">{{ u[11] or 'Sin correo' }}</td>
-                    <td class="admin-role">{{ u[2] }}</td>
 
                     {% if u[2] != 'admin' %}
                     <td class="permission-cell">
@@ -207,29 +209,48 @@
 
     {% if rol_actual == 'admin' %}
     <div class="report-panel">
-        <h3>Generar Reportes de Actividad</h3>
-        <p class="panel-help">Solo los usuarios con permiso pueden descargar CSV; aquí puedes alternar el acceso por usuario.</p>
-        <div class="report-actions">
-            <a href="/admin/reporte/dia" class="btn btn-info btn-auto">Hoy</a>
-            <a href="/admin/reporte/semana" class="btn btn-info btn-auto">Esta Semana</a>
-            <a href="/admin/reporte/mes" class="btn btn-info btn-auto">Este Mes</a>
+        <div class="report-summary-panel">
+            <h3>Reportes de Login</h3>
+            <p class="panel-help">Estos reportes de actividad te permiten analizar el historial de entradas del sistema realizado por los usuarios</p>
+            <div class="report-actions">
+                <a href="/admin/reporte/dia" class="btn btn-info btn-auto">Hoy</a>
+                <a href="/admin/reporte/semana" class="btn btn-info btn-auto">Esta Semana</a>
+                <a href="/admin/reporte/mes" class="btn btn-info btn-auto">Este Mes</a>
+            </div>
         </div>
 
         <div class="report-schedule-panel">
-            <h4>Programar correo recurrente</h4>
-            <p class="panel-help">Puedes enviar un resumen automático cada 3 o 5 días con ingresos al sistema y avance general.</p>
+            <h3>Avisos Recurrentes</h3>
+            <p class="panel-help">Puedes asignar usuarios con correo registrado para que reciban el resumen automático.</p>
 
             <form action="/admin/programar_reporte_actividad" method="POST" class="report-schedule-form">
                 <input type="text" name="nombre" placeholder="Nombre del reporte" class="field-input">
-                <select name="frecuencia_dias" class="field-input" required>
-                    <option value="3">Cada 3 días</option>
-                    <option value="5" selected>Cada 5 días</option>
-                </select>
-                <select name="formato" class="field-input" required>
-                    <option value="csv" selected>CSV adjunto</option>
-                    <option value="word">Word adjunto</option>
-                </select>
-                <input type="text" name="destinatarios" placeholder="Destinatarios opcionales separados por coma" class="field-input">
+                <input type="number" name="frecuencia_dias" min="1" step="1" value="5" placeholder="Cada X días" class="field-input">
+                <div class="report-format-options">
+                    <span class="field-label">Formato del adjunto</span>
+                    <label class="checkbox-option">
+                        <input type="checkbox" name="formatos" value="csv" checked>
+                        <span>CSV adjunto</span>
+                    </label>
+                    <label class="checkbox-option">
+                        <input type="checkbox" name="formatos" value="word">
+                        <span>Word adjunto</span>
+                    </label>
+                </div>
+                <div class="report-recipient-picker" data-recipient-picker>
+                    <label for="recipient-user-select" class="field-label">Asignar usuarios con correo</label>
+                    <select id="recipient-user-select" class="field-input report-recipient-select">
+                        <option value="">Selecciona un usuario</option>
+                        {% for u in usuarios %}
+                            {% if u[11] %}
+                            <option value="{{ u[0] }}" data-name="{{ u[1] }}" data-email="{{ u[11] }}">{{ u[1] }} ({{ u[11] }})</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                    <div class="report-recipient-chips" data-recipient-chips aria-live="polite"></div>
+                    <div class="report-recipient-hidden-inputs" data-recipient-hidden-inputs></div>
+                </div>
+                <input type="text" name="destinatarios" placeholder="Destinatarios opcionales separados por coma" class="field-input report-recipient-input">
                 <button type="submit" class="btn btn-success btn-auto">Programar correo</button>
             </form>
 
@@ -242,7 +263,7 @@
                             <span class="schedule-badge">Cada {{ reporte.frecuencia_dias }} días</span>
                         </div>
                         <div class="report-schedule-meta">
-                            <span>Formato: {{ reporte.formato|upper }}</span>
+                            <span>Formato: {{ reporte.formato_texto }}</span>
                             <span>Estado: {{ 'Activo' if reporte.activo else 'Pausado' }}</span>
                             <span>Próximo envío: {{ reporte.proximo_envio or '--' }}</span>
                             <span>Último envío: {{ reporte.ultimo_envio or '--' }}</span>

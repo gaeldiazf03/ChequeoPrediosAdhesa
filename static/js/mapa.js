@@ -265,51 +265,39 @@ function _asegurarTareasPredioPadre(layer) {
 }
 
 function _resumenFichaHtml(props) {
+    // Mantener función para compatibilidad, pero la ficha completa ya no se mostrará en el sidebar principal.
     var piezas = [];
     piezas.push('<div class="sidebar-section"><div class="sidebar-title"><h3>' + escaparHtml(props.name || 'Lote') + '</h3>' + (props.parent ? '<span class="sidebar-badge">Hijo</span>' : '<span class="sidebar-badge">Padre</span>') + '</div>');
-    if (props.parent) piezas.push('<div class="sidebar-meta"><strong>Lote padre:</strong> ' + escaparHtml(props.parent) + '</div>');
     piezas.push('<div class="sidebar-meta"><strong>Responsable:</strong> ' + escaparHtml(props.responsable || 'Sin responsable') + '</div>');
-    piezas.push('<div class="sidebar-meta"><strong>Variedad:</strong> ' + escaparHtml(props.variedad_cana || '—') + '</div>');
-    piezas.push('<div class="sidebar-meta"><strong>Riego:</strong> ' + escaparHtml(props.tipo_riego || '—') + '</div>');
-    piezas.push('<div class="sidebar-meta"><strong>Sanidad:</strong> ' + escaparHtml(props.estatus_sanitario || '—') + '</div>');
-    piezas.push('<div class="sidebar-meta"><strong>Edad:</strong> ' + escaparHtml(props.edad_cultivo || '—') + '</div>');
-    piezas.push('<div class="sidebar-meta"><strong>Suelo:</strong> ' + escaparHtml(props.tipo_suelo || '—') + '</div>');
-    piezas.push('<div class="sidebar-meta"><strong>Rendimiento TCH:</strong> ' + escaparHtml(props.rendimiento_tch || '—') + '</div>');
-    piezas.push('<div class="sidebar-meta"><strong>Últ. aplicación:</strong> ' + escaparHtml(props.ultima_aplicacion || '—') + '</div>');
     piezas.push('<div class="sidebar-meta"><strong>Incidencias:</strong><br>' + escaparHtml(props.incidencias || 'Sin incidencias') + '</div></div>');
     return piezas.join('');
 }
 
 function _renderSidebarContenido(layer) {
+    var infoEl = document.getElementById('sidebar-info');
     var sidebar = document.getElementById('lote-sidebar');
-    if (!sidebar) return;
+    if (!infoEl && !sidebar) return;
     var props = layer && layer.feature && layer.feature.properties ? layer.feature.properties : {};
 
-    var html = '';
-    html += _resumenFichaHtml(props);
-    html += '<div class="sidebar-section">';
-    html += '<div class="sidebar-title"><h3 style="margin-bottom:0;">Gestionar ficha</h3></div>';
+    // Mostrar información compacta: nombre, hectáreas y responsable
+    var nombre = escaparHtml(props.name || 'Lote');
+    var responsable = escaparHtml(props.responsable || 'Sin responsable');
+    var hect = '';
+    try {
+        if (props.hectareas !== undefined && props.hectareas !== null) {
+            hect = Number(props.hectareas).toFixed(2) + ' ha';
+        } else if (layer && layer.feature && typeof turf === 'object') {
+            var areaM2 = turf.area(layer.feature || {});
+            hect = (areaM2 / 10000).toFixed(2) + ' ha';
+        }
+    } catch (e) { hect = '' }
 
-    if (puedeEditar) {
-        html += '<label>Nombre</label><input type="text" value="' + escaparHtml(props.name || '') + '" onchange="actualizarDato(\'name\', this.value)">';
-        html += '<label>Responsable</label><select onchange="actualizarDato(\'responsable\', this.value)">';
-        html += '<option value="">Sin responsable</option>' + usuariosLista.map(function (u) {
-            var seleccionado = u === props.responsable ? 'selected' : '';
-            return '<option value="' + escaparHtml(u) + '" ' + seleccionado + '>' + escaparHtml(u) + '</option>';
-        }).join('');
-        html += '</select>';
-        html += '<label>Variedad de caña</label><input type="text" value="' + escaparHtml(props.variedad_cana || '') + '" onchange="actualizarDato(\'variedad_cana\', this.value)">';
-        html += '<label>Tipo de riego</label><input type="text" value="' + escaparHtml(props.tipo_riego || '') + '" onchange="actualizarDato(\'tipo_riego\', this.value)">';
-        html += '<label>Edad cultivo</label><input type="number" value="' + escaparHtml(props.edad_cultivo || '') + '" onchange="actualizarDato(\'edad_cultivo\', this.value)">';
-        html += '<label>Tipo de suelo</label><input type="text" value="' + escaparHtml(props.tipo_suelo || '') + '" onchange="actualizarDato(\'tipo_suelo\', this.value)">';
-        html += '<label>Estatus sanitario</label><input type="text" value="' + escaparHtml(props.estatus_sanitario || '') + '" onchange="actualizarDato(\'estatus_sanitario\', this.value)">';
-        html += '<label>Incidencias / notas</label><textarea rows="4" onchange="actualizarDato(\'incidencias\', this.value)">' + escaparHtml(props.incidencias || '') + '</textarea>';
-    } else {
-        html += '<div class="sidebar-placeholder">No tienes permiso para editar esta ficha.</div>';
-    }
-
+    var html = '<div class="sidebar-section"><div class="sidebar-title"><h3>' + nombre + '</h3></div>';
+    if (hect) html += '<div class="sidebar-meta"><strong>Hectáreas:</strong> ' + hect + '</div>';
+    html += '<div class="sidebar-meta"><strong>Responsable:</strong> ' + responsable + '</div>';
     html += '</div>';
-    sidebar.innerHTML = html;
+
+    if (infoEl) infoEl.innerHTML = html; else sidebar.innerHTML = html;
 }
 
 function abrirFichaEnSidebar(layer) {
@@ -358,30 +346,41 @@ function crearContenidoPopup(layer) {
     var props = layer && layer.feature && layer.feature.properties ? layer.feature.properties : {};
     var puedeGestionarTareas = esAdmin || puedeAgregarTareas;
     var puedeMarcar = esAdmin || puedeMarcarTareas || usuarioActual === props.responsable;
-    var html = `<div style="${estilosPopup.contenedor}; min-width: 220px;">`;
-    html += `<h4 style="${estilosPopup.titulo}; margin-bottom: 8px;">Tareas</h4>`;
-    if (props.parent) {
-        html += `<div style="margin-bottom:10px; padding:6px 8px; background:#f5f7f5; border:1px solid #d7e7d7; border-radius:6px; font-size:12px; color:#2E7D32;"><strong>Padre:</strong> ${escaparHtml(props.parent)}</div>`;
-    }
-    html += `<ul style="padding-left: 0; list-style: none; margin-top: 5px; margin-bottom: 15px;">`;
-    (props.tareas || []).forEach(function (tarea, index) {
-        var estado = _normalizarEstadoTarea(tarea);
-        var colorEstado = _colorEstadoTarea(estado);
-        var disableCheck = puedeMarcar ? '' : 'disabled';
-        var estiloTexto = estado === 'verde' ? 'text-decoration: line-through; color: #aaa;' : 'color: #333;';
-
-        html += `<li style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">\n                    <select ${disableCheck} onchange="actualizarEstadoTarea(${index}, this.value)" style="min-width: 180px; padding: 4px 6px; border: 1px solid ${colorEstado}; background: #fff; border-radius: 4px; color: #333;">\n                        <option value="verde" ${estado === 'verde' ? 'selected' : ''}>Verde - Completado</option>\n                        <option value="amarillo" ${estado === 'amarillo' ? 'selected' : ''}>Amarillo - En proceso</option>\n                        <option value="rojo" ${estado === 'rojo' ? 'selected' : ''}>Rojo - No realizado</option>\n                    </select>\n                    <span style="flex: 1; ${estiloTexto}">${escaparHtml(tarea.texto)}</span>`;
-
-        if (puedeGestionarTareas) {
-            html += ` <button onclick="eliminarTarea(${index})" style="color: white; background: #dc3545; border: none; cursor: pointer; border-radius: 3px; padding: 2px 6px; font-size: 10px; margin-left: 5px;">X</button>`;
+    // Incluir hectáreas si están presentes o calcular desde la geometría
+    var hect = '';
+    try {
+        if (props.hectareas !== undefined && props.hectareas !== null) hect = Number(props.hectareas).toFixed(2) + ' ha';
+        else if (layer && layer.feature && typeof turf === 'object') {
+            var areaM2 = turf.area(layer.feature || {});
+            hect = (areaM2 / 10000).toFixed(2) + ' ha';
         }
-        html += `</li>`;
-    });
-    html += `</ul>`;
+    } catch (e) { hect = ''; }
 
-    if (puedeGestionarTareas) {
-        html += `<div style="display: flex; gap: 5px; border-top: 1px solid #eee; padding-top: 10px; margin-bottom: 15px;">\n                    <input type="text" id="inputNuevaTarea" placeholder="Nueva tarea..." style="flex: 1; padding: 5px;">\n                    <button onclick="agregarTarea()" style="padding: 5px 10px; background: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer;">Add</button>\n                </div>`;
+    var html = `<div style="${estilosPopup.contenedor}; min-width: 220px;">`;
+    if (hect) html += `<div style="margin-bottom:6px;"><strong>Hectáreas:</strong> ${hect}</div>`;
+    // Si es hijo, mostrar enlace para ver tareas del predio padre
+    if (props.parent) {
+        html += `<div style="margin-bottom:8px;"><strong>Padre:</strong> <a href="#" onclick="mostrarTareasPadre('${escaparHtml(props.parent)}'); return false;">${escaparHtml(props.parent)}</a></div>`;
     }
+    // Mostrar resumen de tareas asignadas y botón para gestionarlas desde calendario/Gantt
+    var tareasCount = (props.tareas || []).length;
+    html += `<div style="margin-bottom:8px; font-size:13px; color:#374151;"><strong>Tareas asignadas:</strong> ${tareasCount}</div>`;
+    // Mostrar lista compacta de tareas con estado (solo lectura)
+    if (props.tareas && props.tareas.length) {
+        html += '<ul style="padding-left: 0; list-style: none; margin-top: 5px; margin-bottom: 8px;">';
+        props.tareas.forEach(function(t, idx){
+            var est = _normalizarEstadoTarea(t);
+            var color = _colorEstadoTarea(est);
+            var texto = escaparHtml(t.texto || 'Sin descripción');
+            html += `<li style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
+                        <span style="width:10px; height:10px; border-radius:50%; background:${color}; display:inline-block;"></span>
+                        <span style="flex:1; color:#111; font-size:13px;">${texto}</span>
+                     </li>`;
+        });
+        html += '</ul>';
+    }
+
+    html += `<div style="margin-top:8px; display:flex; gap:8px;"><button class="map-button map-button-info" onclick="abrirFichaEnSidebar(capaActualPopup); return false;">Gestionar tareas</button></div>`;
     html += `</div>`;
     return html;
 }
@@ -581,14 +580,14 @@ function descargarReporte(btn) {
     });
 }
 
-function descargarReporteCsv(btn) {
+function descargarReporteExcel(btn) {
     if (!puedeDescargarMapa && !esAdmin) {
-        alert('No tienes permiso para descargar este CSV.');
+        alert('No tienes permiso para descargar este Excel.');
         return;
     }
 
     var textoOriginal = btn.innerHTML;
-    btn.innerHTML = "Generando CSV...";
+    btn.innerHTML = "Generando Excel...";
     btn.disabled = true;
 
     var geojson = drawnItems.toGeoJSON();
@@ -603,7 +602,7 @@ function descargarReporteCsv(btn) {
         return res.blob();
     })
     .then(blob => {
-        var fileName = "Avances_Proyecto_" + slotId + ".csv";
+        var fileName = "Tabla_Avance_Predio_" + slotId + ".xlsx";
         var url = window.URL.createObjectURL(blob);
         var a = document.createElement('a');
         a.href = url;
@@ -614,11 +613,11 @@ function descargarReporteCsv(btn) {
 
         btn.innerHTML = textoOriginal;
         btn.disabled = false;
-        alert("¡CSV descargado con éxito en tu equipo!");
+        alert("¡Excel descargado con éxito en tu equipo!");
     })
     .catch(error => {
         console.error(error);
-        alert("Ocurrió un error al generar el CSV.");
+        alert("Ocurrió un error al generar el Excel.");
         btn.innerHTML = textoOriginal;
         btn.disabled = false;
     });
@@ -787,477 +786,108 @@ window.addEventListener('resize', function () {
     } catch (e) { console.warn('Error al invalidar tamaño del mapa:', e); }
 });
 
-// === SMART MAP (FASE 2) ===
-var smartMapLayer = L.layerGroup().addTo(map);
-var smartMapMarkers = {};
-
-function _colorMarcadorPorVelocidad(velocidad) {
-    if (velocidad >= 30) return '#dc2626';
-    if (velocidad >= 15) return '#d97706';
-    return '#16a34a';
+// === SMARTMAP (FASE 2) ELIMINADO - Migrando a calendario y gantt ===
+function abrirFichaEnSidebar(layer) {
+    capaActualPopup = layer;
+    _renderSidebarContenido(layer);
+    
+    // Actualizar clima basado en coordenadas del lote
+    if (typeof actualizarClimaDesdeFeature === 'function') {
+        actualizarClimaDesdeFeature(layer);
+    }
+    
+    // Actualizar tareas del lote en calendario/gantt
+    if (layer && layer.feature && layer.feature.properties) {
+        const nombreLote = layer.feature.properties.name || '';
+        const tareas = layer.feature.properties.tareas || [];
+        if (typeof actualizarTareasDelLote === 'function') {
+            actualizarTareasDelLote(nombreLote, tareas);
+        }
+    }
 }
 
-function _setText(id, texto) {
-    var el = document.getElementById(id);
-    if (el) el.textContent = texto;
+// Buscar una capa en drawnItems por su nombre
+function buscarCapaPorNombre(nombre) {
+    var encontrada = null;
+    try {
+        if (window.drawnItems) {
+            window.drawnItems.eachLayer(function(layer){
+                try {
+                    if (layer.feature && layer.feature.properties && String(layer.feature.properties.name) === String(nombre)) {
+                        encontrada = layer;
+                    }
+                } catch(e){}
+            });
+        }
+    } catch(e){}
+    return encontrada;
 }
 
-function _renderUnidadesSmartMap(unidades) {
-    if (!smartMapLayer || typeof smartMapLayer.clearLayers !== 'function') return;
-    smartMapLayer.clearLayers();
+// Devuelve lista de nombres de predios padre (capas sin propiedad 'parent')
+window.getPrediosPadreList = function() {
+    var list = [];
+    try {
+        if (window.drawnItems) {
+            window.drawnItems.eachLayer(function(layer){
+                try {
+                    if (!layer.feature || !layer.feature.properties) return;
+                    var props = layer.feature.properties;
+                    if (!props.parent) {
+                        var n = props.name || '';
+                        if (n && list.indexOf(n) === -1) list.push(n);
+                    }
+                } catch(e){}
+            });
+        }
+    } catch(e){}
+    return list;
+};
 
-    if (!Array.isArray(unidades) || unidades.length === 0) {
-        _setText('smartmap-kpi-unidades', '0');
-        _setText('smartmap-kpi-velocidad', '0 km/h');
+// Devuelve lista de nombres de hijos para un predio padre dado
+window.getHijosDePadre = function(parentName) {
+    var list = [];
+    try {
+        if (window.drawnItems) {
+            window.drawnItems.eachLayer(function(layer){
+                try {
+                    if (!layer.feature || !layer.feature.properties) return;
+                    var props = layer.feature.properties;
+                    if (props.parent && String(props.parent) === String(parentName)) {
+                        var n = props.name || '';
+                        if (n && list.indexOf(n) === -1) list.push(n);
+                    }
+                } catch(e){}
+            });
+        }
+    } catch(e){}
+    return list;
+};
+
+// Mostrar tareas del predio padre en la UI (sidebar, calendario, gantt)
+function mostrarTareasPadre(nombrePadre) {
+    if (!nombrePadre) return;
+    var layer = buscarCapaPorNombre(nombrePadre);
+    if (layer) {
+        abrirFichaEnSidebar(layer);
+        if (typeof layer.openPopup === 'function') {
+            layer.openPopup();
+        }
         return;
     }
 
-    var velocidadTotal = 0;
-    var countVel = 0;
-
-    unidades.forEach(function (u) {
-        try {
-            var lat = Number(u.lat);
-            var lng = Number(u.lng);
-            var velocidad = Number(u.velocidad_kmh || 0);
-            var bateria = u.nivel_bateria != null ? Number(u.nivel_bateria) : null;
-            var unidadId = u.unidad_id || (u.placa ? u.placa : 'N/A');
-
-            velocidadTotal += velocidad;
-            countVel++;
-
-            var color = _colorMarcadorPorVelocidad(velocidad);
-            var marker = L.circleMarker([lat, lng], { radius: 8, color: color, fillColor: color, fillOpacity: 0.9 });
-            var popupHtml = `<strong>${escaparHtml(unidadId)}</strong><br/>Velocidad: ${escaparHtml(String(velocidad))} km/h`;
-            if (bateria != null) popupHtml += `<br/>Batería: ${escaparHtml(String(bateria))}%`;
-            if (u.placa) popupHtml += `<br/>Placa: ${escaparHtml(u.placa)}`;
-            marker.bindPopup(popupHtml);
-            marker.addTo(smartMapLayer);
-
-            // Mantener referencia para actualizaciones futuras
-            if (u.unidad_id) smartMapMarkers[u.unidad_id] = marker;
-        } catch (e) { console.warn('Error render unidad', e); }
-    });
-
-    _setText('smartmap-kpi-unidades', String(unidades.length));
-    _setText('smartmap-kpi-velocidad', (countVel ? (velocidadTotal / countVel).toFixed(1) : '0') + ' km/h');
-}
-
-async function cargarTelemetriaSmartMap() {
-    if (!slotId) return;
+    // Fallback: buscar en el GeoJSON y actualizar tareas directamente
     try {
-        var response = await fetch('/api/smartmap/telemetria/' + slotId, {
-            headers: { 'Accept': 'application/json' }
-        });
-
-        if (!response.ok) {
-            if (response.status === 403) return;
-            throw new Error('HTTP ' + response.status);
-        }
-
-        var data = await response.json();
-        var unidades = data.unidades || [];
-        _renderUnidadesSmartMap(unidades);
-        _setText('smartmap-kpi-updated', data.actualizado_en || '--');
-        // TODO: Cuando exista la API de unidades, usar data.unidades para pintar marcadores reales.
-    } catch (error) {
-        console.error('Error cargando telemetría SmartMap:', error);
-    }
-}
-
-function _alertaCardHtml(alerta) {
-    var severidad = (alerta.severidad || 'media').toLowerCase();
-    return '<article class="smartmap-alerta ' + severidad + '">' +
-        '<div class="smartmap-alerta-head">' +
-        '<strong>' + escaparHtml(alerta.titulo || 'Alerta') + '</strong>' +
-        '<button class="map-button map-button-primary" style="padding:4px 10px;" onclick="atenderAlertaSmartMap(' + alerta.id + ')">Atender</button>' +
-        '</div>' +
-        '<p>' + escaparHtml(alerta.mensaje || '') + '</p>' +
-        '<p style="font-size:11px; margin-top:4px; color:#64748b;">Severidad: ' + escaparHtml(severidad) + ' | ' + escaparHtml(alerta.creada_en || '--') + '</p>' +
-        '</article>';
-}
-
-async function cargarAlertasSmartMap() {
-    if (!slotId) return;
-    var contenedor = document.getElementById('smartmap-alertas-lista');
-    if (!puedeVerAlertas) {
-        if (contenedor) contenedor.innerHTML = '<p class="smartmap-empty">Sin permiso para ver alertas.</p>';
-        _setText('smartmap-kpi-alertas', '0');
-        return;
-    }
-    try {
-        var response = await fetch('/api/smartmap/alertas/' + slotId + '?limite=20', {
-            headers: { 'Accept': 'application/json' }
-        });
-
-        if (!response.ok) {
-            if (response.status === 403) {
-                if (contenedor) contenedor.innerHTML = '<p class="smartmap-empty">Sin permiso para ver alertas.</p>';
+        var geo = (window.drawnItems && typeof window.drawnItems.toGeoJSON === 'function') ? window.drawnItems.toGeoJSON() : (window.map ? window.map._geojson : null);
+        if (geo && geo.features) {
+            var f = geo.features.find(function(fe){ return fe.properties && String(fe.properties.name) === String(nombrePadre); });
+            if (f) {
+                var tareas = f.properties.tareas || [];
+                if (typeof actualizarTareasDelLote === 'function') actualizarTareasDelLote(nombrePadre, tareas);
+                if (typeof Swal !== 'undefined') Swal.fire('Tareas cargadas', 'Se han cargado las tareas del predio padre en el calendario.', 'info');
                 return;
             }
-            throw new Error('HTTP ' + response.status);
         }
+    } catch(e){}
 
-        var data = await response.json();
-        var alertas = data.alertas || [];
-        _setText('smartmap-kpi-alertas', String(alertas.length));
-
-        if (!contenedor) return;
-        if (!alertas.length) {
-            contenedor.innerHTML = '<p class="smartmap-empty">No hay alertas activas.</p>';
-            return;
-        }
-        contenedor.innerHTML = alertas.map(_alertaCardHtml).join('');
-    } catch (error) {
-        console.error('Error cargando alertas SmartMap:', error);
-        if (contenedor) contenedor.innerHTML = '<p class="smartmap-empty">Error cargando alertas.</p>';
-    }
+    if (typeof Swal !== 'undefined') Swal.fire('No encontrado', 'No se encontró el predio padre en el mapa.', 'warning');
 }
-
-function _reglaCardHtml(regla) {
-    var estadoTexto = regla.activa ? 'Activa' : 'Inactiva';
-    var estadoClase = regla.activa ? 'estado-activa' : 'estado-inactiva';
-    var textoToggle = regla.activa ? 'Desactivar' : 'Activar';
-
-    return '<article class="smartmap-regla">' +
-        '<div>' +
-        '<strong>' + escaparHtml(regla.nombre) + '</strong><br>' +
-        '<small>Tipo: ' + escaparHtml(regla.tipo) + ' | Umbral: ' + Number(regla.umbral).toFixed(1) + ' | Severidad: ' + escaparHtml(regla.severidad) + '</small><br>' +
-        '<small class="' + estadoClase + '">' + estadoTexto + '</small>' +
-        '</div>' +
-        '<button class="map-button map-button-warning" style="padding:6px 10px;" onclick="toggleReglaSmartMap(' + regla.id + ', ' + (!regla.activa) + ')">' + textoToggle + '</button>' +
-        '</article>';
-}
-
-async function cargarReglasSmartMap() {
-    if (!slotId) return;
-    var contenedor = document.getElementById('smartmap-reglas-lista');
-    try {
-        var response = await fetch('/api/smartmap/reglas/' + slotId, {
-            headers: { 'Accept': 'application/json' }
-        });
-
-        if (!response.ok) {
-            if (response.status === 403) {
-                if (contenedor) contenedor.innerHTML = '<p class="smartmap-empty">Sin permiso para ver reglas.</p>';
-                return;
-            }
-            throw new Error('HTTP ' + response.status);
-        }
-
-        var data = await response.json();
-        var reglas = data.reglas || [];
-        if (!contenedor) return;
-
-        if (!reglas.length) {
-            contenedor.innerHTML = '<p class="smartmap-empty">No hay reglas configuradas.</p>';
-            return;
-        }
-
-        contenedor.innerHTML = reglas.map(_reglaCardHtml).join('');
-    } catch (error) {
-        console.error('Error cargando reglas SmartMap:', error);
-        if (contenedor) contenedor.innerHTML = '<p class="smartmap-empty">Error cargando reglas.</p>';
-    }
-}
-
-function _tipoAlertaHtml(tipo) {
-    return '<article class="smartmap-regla">' +
-        '<div>' +
-        '<strong>' + escaparHtml(tipo.nombre) + '</strong><br>' +
-        '<small>' + escaparHtml(tipo.descripcion || '') + '</small><br>' +
-        '<span class="smartmap-tipo-alerta-badge">' + (tipo.activa ? 'Activa' : 'Inactiva') + '</span>' +
-        '</div>' +
-        '<button class="map-button map-button-warning" style="padding:6px 10px;" onclick="eliminarTipoAlerta(' + tipo.id + ')">Eliminar</button>' +
-        '</article>';
-}
-
-async function cargarTiposAlerta() {
-    var contenedor = document.getElementById('tipos-alerta-lista');
-    if (!contenedor) return;
-
-    try {
-        var response = await fetch('/api/smartmap/tipos-alerta', {
-            headers: { 'Accept': 'application/json' }
-        });
-
-        if (!response.ok) {
-            if (response.status === 403) {
-                contenedor.innerHTML = '<p class="smartmap-empty">Sin permiso para ver tipos de alerta.</p>';
-                return;
-            }
-            throw new Error('HTTP ' + response.status);
-        }
-
-        var data = await response.json();
-        var tipos = data.tipos || [];
-        if (!tipos.length) {
-            contenedor.innerHTML = '<p class="smartmap-empty">No hay tipos de alerta.</p>';
-            return;
-        }
-
-        contenedor.innerHTML = tipos.map(_tipoAlertaHtml).join('');
-    } catch (error) {
-        console.error('Error cargando tipos de alerta:', error);
-        contenedor.innerHTML = '<p class="smartmap-empty">Error cargando tipos de alerta.</p>';
-    }
-}
-
-async function crearTipoAlerta(event) {
-    event.preventDefault();
-    var nombre = document.getElementById('tipo-alerta-nombre').value.trim();
-    var descripcion = document.getElementById('tipo-alerta-descripcion').value.trim();
-    var btn = document.getElementById('btnCrearTipoAlerta');
-
-    if (!nombre) {
-        alert('Escribe el nombre del tipo de alerta.');
-        return;
-    }
-
-    var original = btn ? btn.textContent : '';
-    if (btn) {
-        btn.disabled = true;
-        btn.textContent = 'Creando...';
-    }
-
-    try {
-        var response = await fetch('/api/smartmap/tipos-alerta', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify({ nombre: nombre, descripcion: descripcion })
-        });
-
-        var data = await response.json();
-        if (!response.ok) {
-            alert(data.error || 'No se pudo crear el tipo de alerta.');
-            return;
-        }
-
-        document.getElementById('tipo-alerta-nombre').value = '';
-        document.getElementById('tipo-alerta-descripcion').value = '';
-        await cargarTiposAlerta();
-    } catch (error) {
-        console.error('Error creando tipo de alerta:', error);
-        alert('No se pudo crear el tipo de alerta.');
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.textContent = original || 'Crear Tipo';
-        }
-    }
-}
-
-async function eliminarTipoAlerta(tipoId) {
-    if (!confirm('¿Eliminar este tipo de alerta?')) return;
-    try {
-        var response = await fetch('/api/smartmap/tipos-alerta/' + tipoId, {
-            method: 'DELETE',
-            headers: { 'Accept': 'application/json' }
-        });
-
-        var data = await response.json();
-        if (!response.ok) {
-            alert(data.error || 'No se pudo eliminar el tipo de alerta.');
-            return;
-        }
-
-        await cargarTiposAlerta();
-    } catch (error) {
-        console.error('Error eliminando tipo de alerta:', error);
-        alert('No se pudo eliminar el tipo de alerta.');
-    }
-}
-
-async function crearReglaSmartMap(event) {
-    event.preventDefault();
-    if (!slotId) return;
-
-    var nombre = document.getElementById('regla-nombre').value.trim();
-    var tipo = document.getElementById('regla-tipo').value;
-    var umbral = Number(document.getElementById('regla-umbral').value);
-    var severidad = document.getElementById('regla-severidad').value;
-    var btn = document.getElementById('btnCrearRegla');
-
-    if (!nombre || Number.isNaN(umbral)) {
-        alert('Completa nombre y umbral válidos.');
-        return;
-    }
-
-    var original = btn ? btn.textContent : '';
-    if (btn) {
-        btn.disabled = true;
-        btn.textContent = 'Creando...';
-    }
-
-    try {
-        var response = await fetch('/api/smartmap/reglas/' + slotId, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify({
-                nombre: nombre,
-                tipo: tipo,
-                umbral: umbral,
-                severidad: severidad
-            })
-        });
-
-        if (!response.ok) {
-            if (response.status === 403) {
-                alert('No tienes permiso para crear reglas.');
-                return;
-            }
-            throw new Error('HTTP ' + response.status);
-        }
-
-        document.getElementById('regla-nombre').value = '';
-        document.getElementById('regla-umbral').value = '';
-        await cargarReglasSmartMap();
-    } catch (error) {
-        console.error('Error creando regla SmartMap:', error);
-        alert('No se pudo crear la regla.');
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.textContent = original || 'Crear Regla';
-        }
-    }
-}
-
-async function toggleReglaSmartMap(reglaId, activa) {
-    try {
-        var response = await fetch('/api/smartmap/reglas/' + reglaId + '/toggle', {
-            method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify({ activa: activa })
-        });
-
-        if (!response.ok) {
-            if (response.status === 403) {
-                alert('No tienes permiso para editar reglas.');
-                return;
-            }
-            throw new Error('HTTP ' + response.status);
-        }
-
-        await cargarReglasSmartMap();
-    } catch (error) {
-        console.error('Error actualizando regla SmartMap:', error);
-        alert('No se pudo actualizar la regla.');
-    }
-}
-
-async function simularMovimientoSmartMap(btn) {
-    if (!slotId) return;
-    var boton = btn || document.getElementById('btnSimularSmartMap');
-    var textoOriginal = boton ? boton.textContent : '';
-    if (boton) {
-        boton.disabled = true;
-        boton.textContent = 'Simulando...';
-    }
-
-    try {
-        var response = await fetch('/api/smartmap/simular/' + slotId, {
-            method: 'POST',
-            headers: { 'Accept': 'application/json' }
-        });
-
-        if (!response.ok) {
-            if (response.status === 403) {
-                alert('No tienes permiso para simular telemetría.');
-                return;
-            }
-            throw new Error('HTTP ' + response.status);
-        }
-
-        await cargarTelemetriaSmartMap();
-        await cargarAlertasSmartMap();
-    } catch (error) {
-        console.error('Error simulando telemetría SmartMap:', error);
-        alert('No se pudo ejecutar la simulación.');
-    } finally {
-        if (boton) {
-            boton.disabled = false;
-            boton.textContent = textoOriginal || 'Simular Telemetría';
-        }
-    }
-}
-
-async function atenderAlertaSmartMap(alertaId) {
-    try {
-        var response = await fetch('/api/smartmap/alertas/' + alertaId + '/atender', {
-            method: 'PATCH',
-            headers: { 'Accept': 'application/json' }
-        });
-
-        if (!response.ok) {
-            if (response.status === 403) {
-                alert('No tienes permiso para atender alertas.');
-                return;
-            }
-            throw new Error('HTTP ' + response.status);
-        }
-
-        await cargarAlertasSmartMap();
-    } catch (error) {
-        console.error('Error atendiendo alerta SmartMap:', error);
-        alert('No se pudo atender la alerta.');
-    }
-}
-
-async function probarCorreoSmartMap(btn) {
-    if (!slotId) return;
-
-    var boton = btn || document.getElementById('btnPruebaCorreo');
-    var textoOriginal = boton ? boton.textContent : '';
-    if (boton) {
-        boton.disabled = true;
-        boton.textContent = 'Enviando...';
-    }
-
-    try {
-        var response = await fetch('/api/smartmap/notificaciones/email/prueba/' + slotId, {
-            method: 'POST',
-            headers: { 'Accept': 'application/json' }
-        });
-
-        var data = await response.json();
-
-        if (!response.ok) {
-            alert(data.mensaje || data.error || 'No se pudo enviar el correo de prueba.');
-            return;
-        }
-
-        alert('Correo de prueba enviado a: ' + (data.destinatarios || []).join(', '));
-    } catch (error) {
-        console.error('Error enviando correo de prueba:', error);
-        alert('No se pudo enviar el correo de prueba.');
-    } finally {
-        if (boton) {
-            boton.disabled = false;
-            boton.textContent = textoOriginal || 'Probar Correo';
-        }
-    }
-}
-
-function iniciarSmartMapFase2() {
-    if (!slotId) return;
-    cargarTelemetriaSmartMap();
-    cargarAlertasSmartMap();
-    cargarReglasSmartMap();
-    cargarTiposAlerta();
-    setInterval(cargarTelemetriaSmartMap, 15000);
-    setInterval(cargarAlertasSmartMap, 20000);
-    setInterval(cargarReglasSmartMap, 45000);
-    setInterval(cargarTiposAlerta, 300000);
-}
-
-iniciarSmartMapFase2();

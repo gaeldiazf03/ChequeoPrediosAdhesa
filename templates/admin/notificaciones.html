@@ -2,6 +2,10 @@
 
 {% block title %}Historial de notificaciones{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/notificaciones.css') }}">
+{% endblock %}
+
 {% block content %}
 <div class="container">
   <h2>Historial de notificaciones</h2>
@@ -10,7 +14,7 @@
     <select id="slotSelectNot"></select>
     <button id="cargarNotBtn">Cargar</button>
   </div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;align-items:end;">
+  <div class="notification-filters">
     <div>
       <label for="filtroCanal">Canal</label><br>
       <select id="filtroCanal">
@@ -60,5 +64,8 @@
     <tbody></tbody>
   </table>
 </div>
+{% endblock %}
+
+{% block extra_js %}
 <script src="/static/js/admin_notificaciones.js"></script>
 {% endblock %}

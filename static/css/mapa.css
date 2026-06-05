@@ -9,6 +9,16 @@ h2 {
     margin-top: 0;
 }
 
+.navbar-title {
+    margin: 0;
+    display: inline-block;
+    margin-left: 20px;
+}
+
+.is-hidden {
+    display: none;
+}
+
 .map-toolbar {
     display: flex;
     gap: 12px;
@@ -141,6 +151,10 @@ h2 {
 .map-status {
     font-size: 14px;
     color: #666;
+}
+
+.gantt-container {
+    margin-top: 12px;
 }
 
 .smartmap-panel {
