@@ -54,10 +54,10 @@ def index():
 
 @dashboard_bp.route('/')
 def root_redirect():
-    """Redirige la raíz a dashboard o dashboard-main si no está en sesión."""
+    """Redirige la raíz al dashboard unificado si hay sesión."""
     if not session.get('logeado'):
         return redirect(url_for('login.index'))
-    return redirect(url_for('dashboard.dashboard_main'))
+    return redirect(url_for('dashboard.index'))
 
 @dashboard_bp.route('/cargar_kml/<int:slot_id>', methods=['POST'])
 def cargar(slot_id):
@@ -81,12 +81,10 @@ def cargar(slot_id):
                 # asignar padres en servidor (método importado desde rutas.mapa no disponible aquí),
                 # usar la conversión y volver a generar KML para persistir
                 from rutas.mapa import _asignar_padres_geojson_inplace
-                from rutas.mapa import _asegurar_tareas_padre_geojson_inplace
-                from rutas.mapa import _asegurar_tareas_hijo_geojson_inplace
+                from rutas.mapa import _limpiar_tareas_geojson_inplace
                 try:
                     _asignar_padres_geojson_inplace(geo)
-                    _asegurar_tareas_padre_geojson_inplace(geo)
-                    _asegurar_tareas_hijo_geojson_inplace(geo)
+                    _limpiar_tareas_geojson_inplace(geo)
                 except Exception:
                     pass
                 new_kml = convertir_geojson_a_kml(geo)
@@ -129,19 +127,6 @@ def admin_toggle_edicion(user_id):
     return redirect(url_for('dashboard.index'))
 
 # === NUEVAS RUTAS PARA FASE 1 ===
-
-@dashboard_bp.route('/dashboard-main')
-@require_permission('ver_dashboard')
-def dashboard_main():
-    """
-    Dashboard principal mejorado con KPIs, gráficos y timeline.
-    Protegido por: ver_dashboard
-    """
-    if not session.get('logeado'):
-        return redirect(url_for('login.index'))
-    
-    return render_template('dashboard_main.html', usuario=session.get('username'))
-
 
 @dashboard_bp.route('/admin/reporte/logins', methods=['POST'])
 def reporte_logins_rango():
@@ -251,6 +236,24 @@ def admin_cambiar_correo(user_id):
         nuevo_correo = request.form.get('nuevo_correo', '').strip()
         if db.actualizar_correo_usuario(user_id, nuevo_correo):
             db.registrar_log(session.get('usuario'), "Cambio Correo", f"Usuario ID: {user_id}, correo: {nuevo_correo or 'Sin correo'}")
+    return redirect(url_for('dashboard.index'))
+
+
+@dashboard_bp.route('/admin/cambiar_nombre_slot/<int:slot_id>', methods=['POST'])
+def admin_cambiar_nombre_slot(slot_id):
+    if session.get('rol') != 'admin':
+        return redirect(url_for('dashboard.index'))
+
+    nuevo_nombre = (request.form.get('nuevo_nombre_slot') or '').strip()
+    if not nuevo_nombre:
+        return redirect(url_for('dashboard.index'))
+
+    if len(nuevo_nombre) > 100:
+        nuevo_nombre = nuevo_nombre[:100]
+
+    if db.actualizar_nombre_slot(slot_id, nuevo_nombre):
+        db.registrar_log(session.get('usuario'), 'Cambio nombre slot', f'Slot ID: {slot_id}, nuevo_nombre: {nuevo_nombre}')
+
     return redirect(url_for('dashboard.index'))
 
 @dashboard_bp.route('/admin/toggle_grupo/<grupo>/<int:user_id>', methods=['POST'])

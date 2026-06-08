@@ -6,6 +6,7 @@
     <title>Dashboard - Selección Mapa</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/common.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard_main.css') }}">
 </head>
 
 <body data-kml-saved="{{ kml_saved or '' }}">
@@ -14,9 +15,19 @@
         <p class="spinner-text">Cargando mapa, por favor espera...</p>
     </div>
 
-    <div class="dashboard-header-row">
-        <h1>Selecciona un Slot de Trabajo</h1>
-        <div class="page-actions">
+    <div class="dashboard-header">
+        <h1>Dashboard - Selección de Slots</h1>
+        <div class="header-actions">
+            <a href="#resumen-graficos" class="btn btn-info btn-auto quick-link-btn">Ir al Resumen</a>
+            {% if rol_actual == 'admin' %}
+            <div class="dropdown admin-dropdown-wrap">
+                <a class="btn btn-secondary btn-auto user-menu-btn" href="#" id="adminMenu">{{ session.get('username', 'Admin') }} ▾</a>
+                <div class="admin-dropdown-menu" id="adminDropdown">
+                    <a href="/admin/tractores">Tractores</a>
+                    <a href="/admin/planes">Actividades</a>
+                </div>
+            </div>
+            {% endif %}
             <a href="/logout" class="btn btn-secondary btn-auto logout-btn">Cerrar Sesión</a>
         </div>
     </div>
@@ -24,7 +35,11 @@
     <div class="slots-container">
         {% for slot in slots %}
         <div class="slot">
-            <h3>Slot {{ slot[0] }}</h3>
+            <h3>{{ slot[1] }}</h3>
+
+            {% if rol_actual == 'admin' %}
+            <button type="button" class="btn btn-info btn-small" data-slot-id="{{ slot[0] }}" data-slot-name="{{ slot[1] }}" onclick="abrirModalNombreSlot(this)">Editar nombre</button>
+            {% endif %}
 
             {% if slot[3] %}
             <a href="/adhesa/{{ slot[2] }}" class="btn">Abrir {{ slot[1] }}</a>
@@ -207,6 +222,24 @@
         </div>
     </div>
 
+    <div id="modalNombreSlot" class="modal-overlay">
+        <div class="modal-card slot-name-modal">
+            <div class="slot-name-modal-badge">Configuracion del slot</div>
+            <h3 class="modal-title slot-name-modal-title">Cambiar Nombre del Slot</h3>
+
+            <form id="formCambiarNombreSlot" method="POST" action="" class="slot-name-modal-form">
+                <label for="nuevoNombreSlotInput" class="slot-name-modal-label">Nuevo nombre</label>
+                <input type="text" name="nuevo_nombre_slot" id="nuevoNombreSlotInput" placeholder="Ej. Predio Norte - Caña" required maxlength="100" class="modal-input slot-name-modal-input">
+                <p class="slot-name-modal-hint">Este cambio solo modifica el nombre visible del slot en el sistema.</p>
+
+                <div class="modal-actions">
+                    <button type="button" onclick="cerrarModalNombreSlot()" class="btn btn-secondary btn-auto">Cancelar</button>
+                    <button type="submit" class="btn btn-info btn-auto">Actualizar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     {% if rol_actual == 'admin' %}
     <div class="report-panel">
         <div class="report-summary-panel">
@@ -298,6 +331,72 @@
     </div>
     {% endif %}
 
+    <hr class="section-divider" />
+
+    <div id="resumen-graficos" class="dashboard-container dashboard-resumen-graficos">
+        <div class="kpi-grid" id="kpis-container">
+            <div class="loading">Cargando KPIs...</div>
+        </div>
+
+        <div class="charts-section" id="charts-container">
+            <div class="loading">Cargando gráficos...</div>
+        </div>
+
+        <div class="cronograma-section">
+            <h2>Gestión de Cronogramas</h2>
+            <div class="cronograma-grid" id="cronogramas-container">
+                <div class="loading">Cargando planes...</div>
+            </div>
+        </div>
+
+        <div class="activities-section">
+            <h2>Actividades Próximas (7 días)</h2>
+            <div class="activity-timeline" id="actividades-container">
+                <div class="loading">Cargando actividades...</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-cronograma-dashboard" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" onclick="cerrarModalCronogramaDashboard()">&times;</span>
+            <h3 class="modal-header">Nuevo Plan de Cronograma</h3>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="nombre-plan-dashboard">Nombre del plan:</label>
+                    <input type="text" id="nombre-plan-dashboard" class="field-input" placeholder="Ej. Fertilización Enero" required>
+                </div>
+                <div class="form-group">
+                    <label for="slot-plan-dashboard">Slot:</label>
+                    <select id="slot-plan-dashboard" class="field-input" required></select>
+                </div>
+                <div class="form-group">
+                    <label for="lote-padre-dashboard">Lote padre:</label>
+                    <select id="lote-padre-dashboard" class="field-input" required></select>
+                </div>
+                <div class="form-group">
+                    <label>Lotes hijos (opcional):</label>
+                    <div id="lotes-hijos-dashboard" class="report-format-options"></div>
+                </div>
+                <div class="form-group">
+                    <label for="fecha-inicio-plan-dashboard">Fecha de inicio:</label>
+                    <input type="date" id="fecha-inicio-plan-dashboard" class="field-input" required>
+                </div>
+                <div class="form-group">
+                    <label>Actividades predefinidas por etapa:</label>
+                    <div id="etapas-resumen-plan-dashboard" class="etapas-preview-box">
+                        <p class="panel-help">Cargando resumen del catálogo...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="cerrarModalCronogramaDashboard()">Cancelar</button>
+                <button class="btn btn-primary" onclick="crearPlanDashboard()">Crear y Aplicar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
 

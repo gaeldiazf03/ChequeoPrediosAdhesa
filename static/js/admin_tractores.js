@@ -6,13 +6,29 @@ document.addEventListener('DOMContentLoaded', function(){
   const cancelarModal = document.getElementById('cancelarModal');
   const guardarBtn = document.getElementById('guardarTractor');
 
+  function normalizarEstado(estado){
+    if(estado === 'activo') return 'disponible';
+    if(estado === 'no disponible') return 'no_disponible';
+    return estado || 'disponible';
+  }
+
+  function etiquetaEstado(estado){
+    const estadoNormalizado = normalizarEstado(estado);
+    const etiquetas = {
+      disponible: 'Disponible',
+      mantenimiento: 'Mantenimiento',
+      no_disponible: 'No disponible'
+    };
+    return etiquetas[estadoNormalizado] || estado;
+  }
+
   function mostrarModal(data){
     document.getElementById('tractor_id').value = data?.id || '';
     document.getElementById('placa').value = data?.placa || '';
     document.getElementById('modelo').value = data?.modelo || '';
     document.getElementById('ano').value = data?.ano || '';
-    document.getElementById('slot_id').value = data?.slot_id || '';
-    modal.style.display = 'block';
+    document.getElementById('estado').value = normalizarEstado(data?.estado);
+    modal.style.display = 'flex';
   }
 
   function ocultarModal(){
@@ -30,7 +46,7 @@ document.addEventListener('DOMContentLoaded', function(){
       placa: document.getElementById('placa').value,
       modelo: document.getElementById('modelo').value,
       ano: document.getElementById('ano').value || null,
-      slot_id: document.getElementById('slot_id').value || null
+      estado: document.getElementById('estado').value
     };
 
     try{
@@ -60,7 +76,7 @@ document.addEventListener('DOMContentLoaded', function(){
           <td>${t.placa}</td>
           <td>${t.modelo || ''}</td>
           <td>${t.ano || ''}</td>
-          <td>${t.estado || ''}</td>
+          <td>${etiquetaEstado(t.estado)}</td>
           <td>${t.slot_id || ''}</td>
           <td>
             <button class="btn btn-sm btn-secondary btn-edit" data-id="${t.id}">Editar</button>

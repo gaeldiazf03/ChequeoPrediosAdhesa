@@ -7,68 +7,78 @@
 {% endblock %}
 
 {% block content %}
-<div class="container">
-  <h2>Gestión de Tractores</h2>
-  <div class="admin-actions">
-    <button id="btnAgregarTractor" class="btn btn-primary">Agregar Tractor</button>
-  </div>
+<main class="container admin-tractores">
+  <header class="page-header">
+    <div>
+      <h2>Gestión de Tractores</h2>
+      <p>Alta, edición, vinculación y eliminación de tractores registrados.</p>
+    </div>
+    <div class="admin-actions">
+      <a href="{{ url_for('dashboard.index') }}" class="btn btn-secondary">Volver al Dashboard</a>
+      <button type="button" id="btnAgregarTractor" class="btn btn-primary">Agregar Tractor</button>
+    </div>
+  </header>
 
-  <table class="table table-striped" id="tablaTractores">
-    <thead>
-      <tr>
-        <th>ID</th>
-        <th>Placa</th>
-        <th>Modelo</th>
-        <th>Año</th>
-        <th>Estado</th>
-        <th>Slot</th>
-        <th>Acciones</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+  <section class="table-responsive">
+    <table class="table table-striped" id="tablaTractores">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Placa</th>
+          <th>Modelo</th>
+          <th>Año</th>
+          <th>Estado</th>
+          <th>Slot</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
 
-  <!-- Modal simple -->
-  <div id="modalTractor" class="modal" tabindex="-1" role="dialog">
+  <div id="modalTractor" class="modal" tabindex="-1" role="dialog" aria-hidden="true">
     <div class="modal-dialog" role="document">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title">Agregar / Editar Tractor</h5>
-          <button type="button" class="close" id="cerrarModal">×</button>
+          <h3 class="modal-title">Agregar / Editar Tractor</h3>
+          <button type="button" class="close" id="cerrarModal" aria-label="Cerrar">×</button>
         </div>
         <div class="modal-body">
           <form id="formTractor">
-            <input type="hidden" id="tractor_id" />
+            <input type="hidden" id="tractor_id" name="tractor_id">
             <div class="form-group">
-              <label>Placa</label>
-              <input class="form-control" id="placa" required />
+              <label for="placa">Placa</label>
+              <input class="form-control" id="placa" name="placa" required>
             </div>
             <div class="form-group">
-              <label>Modelo</label>
-              <input class="form-control" id="modelo" />
+              <label for="modelo">Modelo</label>
+              <input class="form-control" id="modelo" name="modelo">
             </div>
             <div class="form-group">
-              <label>Año</label>
-              <input class="form-control" id="ano" type="number" />
+              <label for="ano">Año</label>
+              <input class="form-control" id="ano" name="ano" type="number">
             </div>
             <div class="form-group">
-              <label>Slot ID (opcional)</label>
-              <input class="form-control" id="slot_id" type="number" />
+              <label for="estado">Estado</label>
+              <select class="form-control" id="estado" name="estado">
+                <option value="disponible">Disponible</option>
+                <option value="mantenimiento">Mantenimiento</option>
+                <option value="no_disponible">No disponible</option>
+              </select>
             </div>
           </form>
         </div>
         <div class="modal-footer">
-          <button id="guardarTractor" class="btn btn-primary">Guardar</button>
-          <button id="cancelarModal" class="btn btn-secondary">Cancelar</button>
+          <button type="button" id="guardarTractor" class="btn btn-primary">Guardar</button>
+          <button type="button" id="cancelarModal" class="btn btn-secondary">Cancelar</button>
         </div>
       </div>
     </div>
   </div>
-
-</div>
+</main>
 
 {% endblock %}
 
 {% block extra_js %}
-<script src="/static/js/admin_tractores.js"></script>
+<script src="{{ url_for('static', filename='js/admin_tractores.js') }}"></script>
 {% endblock %}

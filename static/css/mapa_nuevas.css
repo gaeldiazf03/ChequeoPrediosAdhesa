@@ -119,8 +119,8 @@ h2 {
 }
 
 .calendar-panel #calendar {
-    min-height: 700px;
-    height: 760px;
+    min-height: 0;
+    height: auto;
 }
 
 .map-column {
@@ -238,11 +238,13 @@ h2 {
     border-radius: 10px;
     background: #ffffff;
     padding: 12px;
-    overflow-y: auto;
+    overflow-y: visible;
+    position: relative;
 }
 
 .calendar-panel #calendar {
-    min-height: 420px;
+    min-height: 0;
+    height: auto;
 }
 
 /* FullCalendar day selection feedback */
@@ -258,20 +260,18 @@ h2 {
 .fc .fc-day-checkbox {
     appearance: none;
     -webkit-appearance: none;
-    position: absolute;
-    top: 6px;
-    left: 6px;
+    position: static;
     width: 15px;
     height: 15px;
     z-index: 5;
     cursor: pointer;
-    width: 15px;
-    height: 15px;
     border: 2px solid #94a3b8;
     border-radius: 4px;
     background: #fff;
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
     transition: all 0.15s ease-in-out;
+    margin: 0;
+    flex-shrink: 0;
 }
 
 .fc .fc-day-checkbox:hover {
@@ -290,11 +290,17 @@ h2 {
 }
 
 .fc .fc-daygrid-day-top {
-    padding-left: 2px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 6px;
+    flex-direction: row;
+    padding: 4px 6px;
 }
 
 .fc .fc-daygrid-day-number {
     font-weight: 700;
+    margin-left: auto;
 }
 
 .fc .fc-task-chip {
@@ -346,6 +352,159 @@ h2 {
     border-radius: 10px;
     background: #ffffff;
     padding: 10px;
+    position: fixed;
+    right: 18px;
+    top: 170px;
+    width: 320px;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    box-shadow: 0 16px 30px rgba(15, 23, 42, 0.18);
+    z-index: 1200;
+    display: none;
+    font-size: 13px;
+    line-height: 1.35;
+}
+
+.task-editor:empty {
+    display: none;
+}
+
+.task-editor.is-open {
+    display: block;
+}
+
+.task-editor.is-dragging {
+    user-select: none;
+}
+
+.task-editor label,
+.task-editor input,
+.task-editor select,
+.task-editor button,
+.task-editor p,
+.task-editor strong {
+    font-size: 13px;
+}
+
+.te-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: -4px -4px 8px -4px;
+    padding: 6px 8px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.te-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.te-drag-handle {
+    cursor: grab;
+}
+
+.te-drag-handle:active {
+    cursor: grabbing;
+}
+
+.te-close-btn {
+    border: 0;
+    background: transparent;
+    color: #64748b;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 4px;
+}
+
+.te-close-btn:hover {
+    color: #0f172a;
+}
+
+.te-selection-block {
+    margin-bottom: 10px;
+}
+
+.te-field-group {
+    display: grid;
+    gap: 4px;
+    margin-bottom: 10px;
+}
+
+.te-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.te-assignment {
+    display: grid;
+    gap: 5px;
+    margin-bottom: 6px;
+    padding: 8px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #f8fafc;
+}
+
+.te-tractor-box {
+    margin-top: 2px;
+    margin-bottom: 10px;
+    padding: 8px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #f8fafc;
+}
+
+.te-inline-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.te-inline-check input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+}
+
+.te-help-text {
+    margin: 2px 0 0;
+    color: #64748b;
+    font-size: 12px;
+}
+
+.te-actions {
+    margin-top: 4px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.task-editor .map-button {
+    width: auto;
+    margin: 0;
+    padding: 7px 11px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.selected-dates-info {
+    margin-top: 10px;
+    padding: 8px 10px;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    background: #f8fafc;
+    color: #334155;
+    font-size: 13px;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
 }
 
 .calendar-column .task-editor {
@@ -570,6 +729,15 @@ h2 {
 @media (max-width: 900px) {
     .map-workbench {
         grid-template-columns: 1fr;
+    }
+
+    .task-editor {
+        position: static;
+        width: 100%;
+        max-height: none;
+        right: auto;
+        top: auto;
+        box-shadow: none;
     }
 
     .ficha-calendario-split {

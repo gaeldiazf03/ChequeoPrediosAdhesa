@@ -167,11 +167,10 @@ def guardar(slot_id):
 
     data = request.get_json(silent=True)
     if data:
-        # Antes de convertir a KML, intentar asignar padres automáticos si corresponde
+        # Antes de convertir a KML, asignar padres y eliminar tareas del mapa
         try:
             _asignar_padres_geojson_inplace(data)
-            _asegurar_tareas_padre_geojson_inplace(data)
-            _asegurar_tareas_hijo_geojson_inplace(data)
+            _limpiar_tareas_geojson_inplace(data)
         except Exception:
             pass
         try:
@@ -286,66 +285,23 @@ def _asignar_padres_geojson_inplace(geojson_obj, principales=None):
     return asignadas
 
 
-def _asegurar_tareas_padre_geojson_inplace(geojson_obj, principales=None):
-    """Agrega tareas agrícolas por defecto a los predios padre si no tienen tareas."""
+def _limpiar_tareas_geojson_inplace(geojson_obj):
+    """Elimina tareas embebidas en propiedades para forzar gestión desde planes.html."""
     if not geojson_obj or 'features' not in geojson_obj:
         return 0
 
-    principales_default = ['Casa Blanca', 'Mango', 'Guzman', 'Paisabel', 'Isleta', 'Tamante']
-    principales = principales or principales_default
-    tareas_default = [
-        {'texto': 'Subsuelo', 'estado': 'rojo', 'completada': False},
-        {'texto': 'Arado', 'estado': 'rojo', 'completada': False},
-        {'texto': 'Rastra', 'estado': 'rojo', 'completada': False},
-        {'texto': 'Barbecho', 'estado': 'rojo', 'completada': False},
-    ]
-
-    asignadas = 0
+    limpiadas = 0
     for feature in geojson_obj.get('features', []):
         try:
             props = feature.get('properties', {}) or {}
-            nombre = props.get('name')
-            if not nombre or str(nombre).strip() not in principales:
-                continue
-
-            tareas = props.get('tareas')
-            if not isinstance(tareas, list) or len(tareas) == 0:
-                props['tareas'] = [dict(t) for t in tareas_default]
+            if 'tareas' in props:
+                props.pop('tareas', None)
                 feature['properties'] = props
-                asignadas += 1
+                limpiadas += 1
         except Exception:
             continue
 
-    return asignadas
-
-
-def _asegurar_tareas_hijo_geojson_inplace(geojson_obj):
-    """Agrega actividades básicas a los predios hijos si aún no tienen tareas."""
-    if not geojson_obj or 'features' not in geojson_obj:
-        return 0
-
-    tareas_basicas = [
-        {'texto': 'Riego inicial', 'estado': 'rojo', 'completada': False},
-        {'texto': 'Fertilización básica', 'estado': 'rojo', 'completada': False},
-        {'texto': 'Monitoreo de crecimiento', 'estado': 'rojo', 'completada': False},
-        {'texto': 'Control de maleza', 'estado': 'rojo', 'completada': False},
-    ]
-
-    asignadas = 0
-    for feature in geojson_obj.get('features', []):
-        try:
-            props = feature.get('properties', {}) or {}
-            if not props.get('parent'):
-                continue
-            tareas = props.get('tareas')
-            if not isinstance(tareas, list) or len(tareas) == 0:
-                props['tareas'] = [dict(t) for t in tareas_basicas]
-                feature['properties'] = props
-                asignadas += 1
-        except Exception:
-            continue
-
-    return asignadas
+    return limpiadas
 
 
 def _cobertura_mayor_al_umbral(parent_shape, child_shape, umbral=0.6):

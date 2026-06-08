@@ -33,6 +33,93 @@ var _highlightedChildren = [];
 var _originalStyles = new WeakMap();
 var _parentPopupView = null;
 
+function _asegurarPatternImproductiva() {
+    var svg = map && map.getRenderer && map.getRenderer(drawnItems) ? map.getRenderer(drawnItems)._container : null;
+    if (!svg) return;
+
+    var defs = svg.querySelector('defs');
+    if (!defs) {
+        defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+        svg.insertBefore(defs, svg.firstChild);
+    }
+
+    if (svg.querySelector('#improductiveHatchPattern')) {
+        return;
+    }
+
+    var pattern = document.createElementNS('http://www.w3.org/2000/svg', 'pattern');
+    pattern.setAttribute('id', 'improductiveHatchPattern');
+    pattern.setAttribute('patternUnits', 'userSpaceOnUse');
+    pattern.setAttribute('width', '8');
+    pattern.setAttribute('height', '8');
+    pattern.setAttribute('patternTransform', 'rotate(45)');
+
+    var bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    bg.setAttribute('width', '8');
+    bg.setAttribute('height', '8');
+    bg.setAttribute('fill', '#d1d5db');
+
+    var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', '0');
+    line.setAttribute('y1', '0');
+    line.setAttribute('x2', '0');
+    line.setAttribute('y2', '8');
+    line.setAttribute('stroke', '#9ca3af');
+    line.setAttribute('stroke-width', '2');
+
+    pattern.appendChild(bg);
+    pattern.appendChild(line);
+    defs.appendChild(pattern);
+}
+
+function _esAreaProductiva(layer) {
+    var props = layer && layer.feature && layer.feature.properties ? layer.feature.properties : {};
+    var valor = props.productiva;
+    if (typeof valor === 'boolean') return valor;
+    if (valor === undefined || valor === null) return true;
+    var texto = String(valor).toLowerCase().trim();
+    return !(texto === 'false' || texto === '0' || texto === 'no' || texto === 'n');
+}
+
+function _aplicarEstiloProductividad(layer, resaltado) {
+    if (!layer || typeof layer.setStyle !== 'function') return;
+
+    var productiva = _esAreaProductiva(layer);
+    var styleBase;
+
+    if (productiva) {
+        styleBase = {
+            color: '#b8860b',
+            fillColor: '#E1AD01',
+            fillOpacity: resaltado ? 0.75 : 0.5,
+            weight: resaltado ? 3 : 2,
+            dashArray: null
+        };
+    } else {
+        styleBase = {
+            color: '#6b7280',
+            fillColor: '#d1d5db',
+            fillOpacity: resaltado ? 0.7 : 0.55,
+            weight: resaltado ? 3 : 2,
+            dashArray: '6 4'
+        };
+    }
+
+    layer.setStyle(styleBase);
+
+    if (!productiva) {
+        _asegurarPatternImproductiva();
+        setTimeout(function () {
+            try {
+                if (layer._path) {
+                    layer._path.setAttribute('fill', 'url(#improductiveHatchPattern)');
+                    layer._path.setAttribute('fill-opacity', resaltado ? '0.78' : '0.64');
+                }
+            } catch (e) { }
+        }, 0);
+    }
+}
+
 function _clearHighlightedChildren() {
     _highlightedChildren.forEach(function(l) {
         try {
@@ -206,29 +293,6 @@ function crearFilaDosColumnas(columnaIzquierda, columnaDerecha) {
         '</div>';
 }
 
-function _esPredioPadreDefault(nombre) {
-    if (!nombre) return false;
-    var nombres = ['Casa Blanca', 'Mango', 'Guzman', 'Paisabel', 'Isleta', 'Tamante'];
-    return nombres.indexOf(String(nombre).trim()) !== -1;
-}
-
-function _tareasPredioPadreDefault() {
-    return [
-        { texto: 'Subsuelo', estado: 'rojo', completada: false },
-        { texto: 'Arado', estado: 'rojo', completada: false },
-        { texto: 'Rastra', estado: 'rojo', completada: false },
-        { texto: 'Barbecho', estado: 'rojo', completada: false }
-    ];
-}
-
-function _tareasBasicasHijoDefault() {
-    return [
-        { texto: 'Riego inicial', estado: 'rojo', completada: false },
-        { texto: 'Fertilización básica', estado: 'rojo', completada: false },
-        { texto: 'Monitoreo de crecimiento', estado: 'rojo', completada: false },
-        { texto: 'Control de maleza', estado: 'rojo', completada: false }
-    ];
-}
 
 function _normalizarEstadoTarea(tarea) {
     if (!tarea) return 'rojo';
@@ -253,17 +317,6 @@ function _colorEstadoTarea(estado) {
     return '#dc3545';
 }
 
-function _asegurarTareasPredioPadre(layer) {
-    if (!layer || !layer.feature || !layer.feature.properties) return;
-    var props = layer.feature.properties;
-    if (_esPredioPadreDefault(props.name) && (!Array.isArray(props.tareas) || props.tareas.length === 0)) {
-        props.tareas = _tareasPredioPadreDefault();
-    }
-    if (props.parent && (!Array.isArray(props.tareas) || props.tareas.length === 0)) {
-        props.tareas = _tareasBasicasHijoDefault();
-    }
-}
-
 function _resumenFichaHtml(props) {
     // Mantener función para compatibilidad, pero la ficha completa ya no se mostrará en el sidebar principal.
     var piezas = [];
@@ -282,6 +335,7 @@ function _renderSidebarContenido(layer) {
     // Mostrar información compacta: nombre, hectáreas y responsable
     var nombre = escaparHtml(props.name || 'Lote');
     var responsable = escaparHtml(props.responsable || 'Sin responsable');
+    var productivaTexto = _esAreaProductiva(layer) ? 'Sí' : 'No';
     var hect = '';
     try {
         if (props.hectareas !== undefined && props.hectareas !== null) {
@@ -294,6 +348,7 @@ function _renderSidebarContenido(layer) {
 
     var html = '<div class="sidebar-section"><div class="sidebar-title"><h3>' + nombre + '</h3></div>';
     if (hect) html += '<div class="sidebar-meta"><strong>Hectáreas:</strong> ' + hect + '</div>';
+    html += '<div class="sidebar-meta"><strong>Productiva:</strong> ' + productivaTexto + '</div>';
     html += '<div class="sidebar-meta"><strong>Responsable:</strong> ' + responsable + '</div>';
     html += '</div>';
 
@@ -318,11 +373,12 @@ function prepararCapa(layer) {
     var p = layer.feature.properties || {};
     if (!p.name) p.name = 'Nuevo Lote';
     if (!p.responsable) p.responsable = '';
-    if (!Array.isArray(p.tareas)) p.tareas = [];
-    _asegurarTareasPredioPadre(layer);
+    if (p.productiva === undefined || p.productiva === null) p.productiva = true;
+    p.tareas = [];
+    _aplicarEstiloProductividad(layer, false);
 
-    layer.on('mouseover', function () { if (typeof this.setStyle === 'function') this.setStyle({ fillOpacity: 0.8, weight: 3 }); });
-    layer.on('mouseout', function () { if (typeof this.setStyle === 'function') this.setStyle({ fillOpacity: 0.5, weight: 2 }); });
+    layer.on('mouseover', function () { _aplicarEstiloProductividad(this, true); });
+    layer.on('mouseout', function () { _aplicarEstiloProductividad(this, false); });
 
     layer.on('click', function () {
         abrirFichaEnSidebar(layer);
@@ -358,6 +414,14 @@ function crearContenidoPopup(layer) {
 
     var html = `<div style="${estilosPopup.contenedor}; min-width: 220px;">`;
     if (hect) html += `<div style="margin-bottom:6px;"><strong>Hectáreas:</strong> ${hect}</div>`;
+    var checkedProductiva = _esAreaProductiva(layer) ? 'checked' : '';
+    html += `<div style="margin-bottom:8px;">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="checkbox" ${checkedProductiva} onchange="actualizarProductividad(this.checked)">
+                    <span><strong>Área productiva</strong></span>
+                </label>
+                <small style="color:#6b7280;">Si se desmarca, se muestra como improductiva con rayado gris.</small>
+             </div>`;
     // Si es hijo, mostrar enlace para ver tareas del predio padre
     if (props.parent) {
         html += `<div style="margin-bottom:8px;"><strong>Padre:</strong> <a href="#" onclick="mostrarTareasPadre('${escaparHtml(props.parent)}'); return false;">${escaparHtml(props.parent)}</a></div>`;
@@ -403,12 +467,19 @@ function actualizarEstadoTarea(index, estado) {
 function actualizarPopupActual(mutador) {
     if (!capaActualPopup || typeof mutador !== 'function') return;
     mutador(capaActualPopup);
-    _asegurarTareasPredioPadre(capaActualPopup);
     if (typeof capaActualPopup.setPopupContent === 'function') {
         capaActualPopup.setPopupContent(crearContenidoPopup(capaActualPopup));
     }
+    _aplicarEstiloProductividad(capaActualPopup, false);
     _renderSidebarContenido(capaActualPopup);
     if (typeof registrarCambio === 'function') registrarCambio();
+}
+
+function actualizarProductividad(valor) {
+    actualizarPopupActual(function (layer) {
+        if (!layer.feature.properties) layer.feature.properties = {};
+        layer.feature.properties.productiva = !!valor;
+    });
 }
 
 function eliminarTarea(index) {
@@ -461,6 +532,13 @@ if (puedeEditar) map.addControl(drawControl);
 
 map.on('draw:edited', function (e) { if (typeof registrarCambio === 'function') registrarCambio(); });
 map.on('draw:deleted', function (e) { if (typeof registrarCambio === 'function') registrarCambio(); });
+
+map.on('draw:edited', function (e) {
+    if (!e || !e.layers || !e.layers.eachLayer) return;
+    e.layers.eachLayer(function (layer) {
+        _aplicarEstiloProductividad(layer, false);
+    });
+});
 
 // Resaltar hijos cuando se abran popups (captura global en el mapa)
 map.on('popupopen', function(e){

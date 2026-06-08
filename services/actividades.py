@@ -2,8 +2,10 @@
 Servicio de actividades: Generación automática de cronogramas según ciclos agrícolas.
 """
 
+import math
 from database import db
 from datetime import datetime, timedelta
+from utils.funciones import convertir_kml_a_geojson
 
 class GeneradorCronograma:
     """Genera automáticamente cronogramas de actividades según tipo de cultivo."""
@@ -168,6 +170,93 @@ class GeneradorCronograma:
 
 class CalculadorKPIs:
     """Calcula KPIs del dashboard."""
+
+    @staticmethod
+    def _es_productiva(props):
+        valor = (props or {}).get('productiva', True)
+        if isinstance(valor, bool):
+            return valor
+        texto = str(valor).strip().lower()
+        return texto not in ('false', '0', 'no', 'n', 'improductiva')
+
+    @staticmethod
+    def _ring_area_m2(ring):
+        if not ring or len(ring) < 3:
+            return 0.0
+
+        # Proyección equirectangular local para estimar área en m2
+        lat0 = sum(float(pt[1]) for pt in ring) / len(ring)
+        cos_lat0 = math.cos(math.radians(lat0))
+        radius = 6378137.0
+
+        projected = []
+        for pt in ring:
+            lon = float(pt[0])
+            lat = float(pt[1])
+            x = radius * math.radians(lon) * cos_lat0
+            y = radius * math.radians(lat)
+            projected.append((x, y))
+
+        if projected[0] != projected[-1]:
+            projected.append(projected[0])
+
+        area2 = 0.0
+        for i in range(len(projected) - 1):
+            x1, y1 = projected[i]
+            x2, y2 = projected[i + 1]
+            area2 += (x1 * y2) - (x2 * y1)
+
+        return abs(area2) / 2.0
+
+    @staticmethod
+    def _geometry_area_hectareas(geometry):
+        if not geometry:
+            return 0.0
+
+        gtype = geometry.get('type')
+        coords = geometry.get('coordinates') or []
+
+        if gtype == 'Polygon':
+            if not coords:
+                return 0.0
+            exterior = CalculadorKPIs._ring_area_m2(coords[0])
+            holes = sum(CalculadorKPIs._ring_area_m2(ring) for ring in coords[1:])
+            return max(exterior - holes, 0.0) / 10000.0
+
+        if gtype == 'MultiPolygon':
+            total_m2 = 0.0
+            for poly in coords:
+                if not poly:
+                    continue
+                exterior = CalculadorKPIs._ring_area_m2(poly[0])
+                holes = sum(CalculadorKPIs._ring_area_m2(ring) for ring in poly[1:])
+                total_m2 += max(exterior - holes, 0.0)
+            return total_m2 / 10000.0
+
+        return 0.0
+
+    @staticmethod
+    def _superficie_desde_kml(kml_texto):
+        if not kml_texto:
+            return 0.0, 0.0
+
+        geojson = convertir_kml_a_geojson(kml_texto)
+        if not geojson:
+            return 0.0, 0.0
+
+        total = 0.0
+        productiva = 0.0
+
+        for feature in geojson.get('features', []):
+            geometry = feature.get('geometry') or {}
+            hectareas = CalculadorKPIs._geometry_area_hectareas(geometry)
+            if hectareas <= 0:
+                continue
+            total += hectareas
+            if CalculadorKPIs._es_productiva(feature.get('properties') or {}):
+                productiva += hectareas
+
+        return total, productiva
     
     @staticmethod
     def obtener_kpis_dashboard():
@@ -177,18 +266,19 @@ class CalculadorKPIs:
             slots = db.obtener_todos_los_slots()
             
             total_slots = len(slots)
-            superficie_total = 0
+            superficie_total = 0.0
+            superficie_en_operacion = 0.0
             lotes_activos = 0
             lotes_cosechados = 0
-            
-            # Simulación: asumir que cada lote tiene una superficie (se puede obtener de metadata)
-            # Por ahora, usaremos un valor estimado
-            superficie_por_lote = 10  # hectáreas
             
             for slot in slots:
                 if slot[3]:  # Si tiene kml_data
                     lotes_activos += 1
-                    superficie_total += superficie_por_lote
+                    total_lote, productiva_lote = CalculadorKPIs._superficie_desde_kml(slot[3])
+                    superficie_total += total_lote
+                    superficie_en_operacion += productiva_lote
+
+            superficie_improductiva = max(superficie_total - superficie_en_operacion, 0.0)
             
             # Estadísticas de actividades
             stats_actividades = db.obtener_todas_las_actividades_para_kpis()
@@ -204,9 +294,9 @@ class CalculadorKPIs:
                     'vacios': total_slots - lotes_activos
                 },
                 'superficie': {
-                    'total_hectareas': superficie_total,
-                    'en_operacion': superficie_total * 0.8,  # Estimado 80%
-                    'en_preparacion': superficie_total * 0.2   # Estimado 20%
+                    'total_hectareas': round(superficie_total, 2),
+                    'en_operacion': round(superficie_en_operacion, 2),
+                    'en_preparacion': round(superficie_improductiva, 2)
                 },
                 'actividades': {
                     'total': stats_actividades['total'],
@@ -246,13 +336,51 @@ class CalculadorKPIs:
     
     @staticmethod
     def obtener_grafico_distribucion_cultivos():
-        """Retorna data para gráfico de distribución de cultivos."""
-        # Esta función se implementará cuando se tenga la metadata de cultivos
-        # Por ahora retorna data mockup
+        """Retorna data real para gráfico de distribución de cultivos desde KML en BD."""
+        buckets = {}
+
+        for slot in db.obtener_todos_los_slots():
+            kml_data = slot[3] if len(slot) > 3 else None
+            if not kml_data:
+                continue
+
+            geojson = convertir_kml_a_geojson(kml_data)
+            if not geojson:
+                continue
+
+            for feature in geojson.get('features', []):
+                geometry = feature.get('geometry') or {}
+                hectareas = CalculadorKPIs._geometry_area_hectareas(geometry)
+                if hectareas <= 0:
+                    continue
+
+                props = feature.get('properties') or {}
+                cultivo = (
+                    props.get('cultivo')
+                    or props.get('tipo_cultivo')
+                    or props.get('crop')
+                    or 'Sin cultivo'
+                )
+                cultivo = str(cultivo).strip() or 'Sin cultivo'
+                buckets[cultivo] = buckets.get(cultivo, 0.0) + hectareas
+
+        if not buckets:
+            return {
+                'labels': ['Sin datos'],
+                'data': [1],
+                'colors': ['#94a3b8']
+            }
+
+        items = sorted(buckets.items(), key=lambda kv: kv[1], reverse=True)
+        labels = [k for k, _ in items]
+        data = [round(v, 2) for _, v in items]
+        palette = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6', '#f97316', '#64748b']
+        colors = [palette[i % len(palette)] for i in range(len(labels))]
+
         return {
-            'labels': ['Caña de azúcar', 'Maíz', 'Frijol', 'Sorgo'],
-            'data': [45, 25, 15, 15],
-            'colors': ['#10b981', '#3b82f6', '#f59e0b', '#ef4444']
+            'labels': labels,
+            'data': data,
+            'colors': colors
         }
     
     @staticmethod

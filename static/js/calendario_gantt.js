@@ -43,69 +43,48 @@ function inicializarCalendario() {
     calendario = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
         locale: 'es',
-        selectable: true,
-        editable: true,
-        eventStartEditable: true,
-        eventDurationEditable: true,
-        eventResizableFromStart: true,
-        selectMirror: true,
-        unselectAuto: false,
-        dayMaxEvents: true,
+        selectable: false,
+        editable: false,
+        dayMaxEvents: false,
         height: 'auto',
         headerToolbar: {
-            left: 'prev,next today',
+            left: 'prev,next',
             center: 'title',
-            right: 'dayGridMonth,timeGridWeek'
+            right: 'today'
         },
-        events: cargarEventosDelCalendario,
-        select: function(info) {
-            seleccionarRangoFechas(info.startStr, info.endStr);
-            abrirDialogoNuevaActividad(info.startStr, info.endStr);
-        },
+        events: [],
         dateClick: function(info) {
             var target = info.jsEvent && info.jsEvent.target ? info.jsEvent.target : null;
             if (target && target.classList && target.classList.contains('fc-day-checkbox')) {
-                toggleDateSelection(info.dateStr, info.jsEvent);
                 return;
             }
-            abrirDialogoNuevaActividad(info.dateStr);
-        },
-        eventClick: function(info) {
-            editarActividad(info.event);
-        },
-        eventDrop: function(info) {
-            actualizarTareaDesdeEvento(info.event);
-        },
-        eventResize: function(info) {
-            actualizarTareaDesdeEvento(info.event);
-        },
-        eventContent: function(arg) {
-            var title = arg.event.title || 'Sin título';
-            var estado = (arg.event.extendedProps && arg.event.extendedProps.estado) || 'no_iniciada';
-            return {
-                html: `<div class="fc-task-chip fc-task-${escaparCss(estado)}"><span class="fc-task-title">${escaparHtml(title)}</span></div>`
-            };
+            // Mantener calendario simple: solo se selecciona desde el checkbox
+            return;
         },
         dayCellDidMount: function(info) {
             try {
+                var dayDate = info.el && info.el.getAttribute ? info.el.getAttribute('data-date') : null;
+                if (!dayDate && info.date) {
+                    dayDate = new Date(info.date.getTime() - (info.date.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+                }
+                if (!dayDate) return;
+
                 var box = document.createElement('input');
                 box.type = 'checkbox';
                 box.className = 'fc-day-checkbox';
-                box.dataset.date = info.dateStr;
+                box.dataset.date = dayDate;
                 box.addEventListener('click', function(ev) {
-                    ev.preventDefault();
                     ev.stopPropagation();
-                    toggleDateSelection(info.dateStr, ev);
+                    toggleDateSelection(dayDate, ev);
                 });
-                if (window.calendarSelectedDates && window.calendarSelectedDates.has(info.dateStr)) box.checked = true;
+                if (window.calendarSelectedDates && window.calendarSelectedDates.has(dayDate)) box.checked = true;
                 info.el.style.position = 'relative';
                 var dayTop = info.el.querySelector('.fc-daygrid-day-top') || info.el;
                 dayTop.style.position = 'relative';
-                dayTop.appendChild(box);
+                dayTop.insertBefore(box, dayTop.firstChild);
 
                 var dayNumber = info.el.querySelector('.fc-daygrid-day-number');
                 if (dayNumber) {
-                    dayNumber.style.paddingLeft = '22px';
                     dayNumber.style.display = 'inline-block';
                 }
             } catch(e){ console.warn('dayCellDidMount error', e); }
@@ -135,20 +114,6 @@ function _syncSelectionUI() {
     try {
         document.querySelectorAll('.fc-day-checkbox').forEach(function(cb){
             cb.checked = window.calendarSelectedDates.has(cb.dataset.date);
-        });
-
-        document.querySelectorAll('.fc-daygrid-day').forEach(function(dayEl){
-            var dateAttr = dayEl.getAttribute('data-date');
-            if (!dateAttr) return;
-            if (window.calendarSelectedDates.has(dateAttr)) dayEl.classList.add('fc-day-selected');
-            else dayEl.classList.remove('fc-day-selected');
-        });
-
-        document.querySelectorAll('.fc-timegrid-col').forEach(function(colEl){
-            var dateAttr = colEl.getAttribute('data-date');
-            if (!dateAttr) return;
-            if (window.calendarSelectedDates.has(dateAttr)) colEl.classList.add('fc-day-selected');
-            else colEl.classList.remove('fc-day-selected');
         });
     } catch(e){}
 }
@@ -264,6 +229,7 @@ function _setSelectionRange(startStr, endStrExclusive) {
     window._calendarLastSelectedDate = window._calendarSelectionOrder.length ? window._calendarSelectionOrder[window._calendarSelectionOrder.length - 1] : null;
     _syncSelectionUI();
     updateTaskEditorSelectionUI();
+    syncTaskEditorWithSelection();
 }
 
 function seleccionarRangoFechas(startStr, endStrExclusive) {
@@ -274,17 +240,37 @@ function toggleDateSelection(dateStr, jsEvent) {
     try {
         var shift = jsEvent && jsEvent.shiftKey;
         if (shift && window._calendarLastSelectedDate) {
-            // select range between last and dateStr
+            // Toggle whole range between anchor and clicked date.
             var a = new Date(window._calendarLastSelectedDate);
             var b = new Date(dateStr);
             if (a > b) { var tmp = a; a = b; b = tmp; }
+
+            var rangeDates = [];
             var cur = new Date(a);
             while (cur <= b) {
                 var d = cur.toISOString().split('T')[0];
-                window.calendarSelectedDates.add(d);
-                if (window._calendarSelectionOrder.indexOf(d) === -1) window._calendarSelectionOrder.push(d);
+                rangeDates.push(d);
                 cur.setDate(cur.getDate() + 1);
             }
+
+            var allSelected = rangeDates.length > 0 && rangeDates.every(function(d) {
+                return window.calendarSelectedDates.has(d);
+            });
+
+            if (allSelected) {
+                rangeDates.forEach(function(d) {
+                    window.calendarSelectedDates.delete(d);
+                });
+                window._calendarSelectionOrder = window._calendarSelectionOrder.filter(function(d) {
+                    return rangeDates.indexOf(d) === -1;
+                });
+            } else {
+                rangeDates.forEach(function(d) {
+                    window.calendarSelectedDates.add(d);
+                    if (window._calendarSelectionOrder.indexOf(d) === -1) window._calendarSelectionOrder.push(d);
+                });
+            }
+
             window._calendarLastSelectedDate = dateStr;
         } else {
             if (window.calendarSelectedDates.has(dateStr)) {
@@ -301,6 +287,7 @@ function toggleDateSelection(dateStr, jsEvent) {
 
         // Update task editor UI to reflect selection
         updateTaskEditorSelectionUI();
+        syncTaskEditorWithSelection();
     } catch(e) { console.warn('toggleDateSelection error', e); }
 }
 
@@ -309,8 +296,8 @@ function clearCalendarSelection() {
     window._calendarLastSelectedDate = null;
     window._calendarSelectionOrder = [];
     document.querySelectorAll('.fc-day-checkbox').forEach(function(cb){ cb.checked = false; });
-    document.querySelectorAll('.fc-daygrid-day.fc-day-selected, .fc-timegrid-col.fc-day-selected').forEach(function(el){ el.classList.remove('fc-day-selected'); });
     updateTaskEditorSelectionUI();
+    syncTaskEditorWithSelection();
 }
 
 function getSelectedDateRange() {
@@ -320,22 +307,201 @@ function getSelectedDateRange() {
 }
 
 function updateTaskEditorSelectionUI() {
-    var editor = document.getElementById('task-editor');
-    if (!editor) return;
+    var infoContainer = document.getElementById('selected-dates-info');
+    if (!infoContainer) return;
     var sel = getSelectedDateRange();
     var extraHtml = '';
     if (sel) {
-        extraHtml += `<div style="margin-bottom:8px;"><strong>Fechas seleccionadas:</strong> ${sel.start} ${sel.start!==sel.end? '→ ' + sel.end : ''} (${sel.dates.length} días)</div>`;
-        // parent and child selects will be added by mostrarEditorTarea when saving
+        extraHtml = `<div><strong>Fechas seleccionadas:</strong> ${sel.start} ${sel.start!==sel.end ? '→ ' + sel.end : ''} (${sel.dates.length} días)</div>`;
     }
-    // Keep existing form if present: try to update a container
-    var selectionContainer = document.getElementById('te-selection-info');
-    if (!selectionContainer) {
-        selectionContainer = document.createElement('div');
-        selectionContainer.id = 'te-selection-info';
-        editor.insertBefore(selectionContainer, editor.firstChild);
+    infoContainer.innerHTML = extraHtml;
+}
+
+var tractorAvailability = {
+    loaded: false,
+    total: 0,
+    source: '',
+    error: false
+};
+
+async function cargarDisponibilidadTractores() {
+    if (tractorAvailability.loaded && !tractorAvailability.error) {
+        return tractorAvailability.total;
     }
-    selectionContainer.innerHTML = extraHtml;
+
+    var mapEl = document.getElementById('map');
+    var slotId = mapEl && mapEl.dataset ? mapEl.dataset.slotId : '';
+
+    try {
+        var adminUrl = slotId ? `/admin/tractores?slot_id=${encodeURIComponent(slotId)}` : '/admin/tractores';
+        var adminResp = await fetch(adminUrl, { headers: { 'Accept': 'application/json' } });
+        if (adminResp.ok) {
+            var tractores = await adminResp.json();
+            if (Array.isArray(tractores)) {
+                var activos = tractores.filter(function(t) {
+                    var estado = String((t && t.estado) || '').toLowerCase();
+                    return estado !== 'inactivo' && estado !== 'baja';
+                }).length;
+                tractorAvailability = { loaded: true, total: activos, source: 'admin', error: false };
+                return tractorAvailability.total;
+            }
+        }
+    } catch (e) {
+        // fallback below
+    }
+
+    try {
+        if (slotId) {
+            var telemetriaResp = await fetch(`/api/smartmap/telemetria/${encodeURIComponent(slotId)}`);
+            if (telemetriaResp.ok) {
+                var telemetria = await telemetriaResp.json();
+                var unidades = Array.isArray(telemetria && telemetria.unidades) ? telemetria.unidades : [];
+                tractorAvailability = { loaded: true, total: unidades.length, source: 'telemetria', error: false };
+                return tractorAvailability.total;
+            }
+        }
+    } catch (e2) {
+        // ignore and fallback to 0
+    }
+
+    tractorAvailability = { loaded: true, total: 0, source: 'none', error: true };
+    return 0;
+}
+
+function actualizarUITractoresEditor() {
+    var chk = document.getElementById('te-usar-tractores');
+    var qty = document.getElementById('te-cantidad-tractores');
+    var hint = document.getElementById('te-tractor-hint');
+    if (!chk || !qty || !hint) return;
+
+    var maxDisponibles = Number(tractorAvailability.total || 0);
+    var habilitado = chk.checked && maxDisponibles > 0;
+
+    qty.disabled = !habilitado;
+    qty.max = String(Math.max(1, maxDisponibles));
+    qty.min = '1';
+    if (!habilitado) {
+        qty.value = '';
+    } else {
+        var actual = parseInt(qty.value || '1', 10);
+        if (!actual || actual < 1) actual = 1;
+        if (actual > maxDisponibles) actual = maxDisponibles;
+        qty.value = String(actual);
+    }
+
+    if (maxDisponibles > 0) {
+        hint.textContent = `Disponibles: ${maxDisponibles}`;
+    } else {
+        hint.textContent = 'No hay tractores disponibles';
+    }
+}
+
+function closeTaskEditor(clearSelection) {
+    var editor = document.getElementById('task-editor');
+    if (!editor) return;
+
+    if (clearSelection) {
+        clearCalendarSelection();
+        return;
+    }
+
+    editor.innerHTML = '';
+    editor.classList.remove('is-open');
+    editor.removeAttribute('data-source');
+}
+
+function enableTaskEditorDrag() {
+    var editor = document.getElementById('task-editor');
+    if (!editor) return;
+
+    var handle = editor.querySelector('.te-drag-handle');
+    var closeBtn = editor.querySelector('#te-close');
+    if (!handle) return;
+
+    if (window.matchMedia && window.matchMedia('(max-width: 900px)').matches) return;
+
+    if (!editor.style.left && !editor.style.top) {
+        var startLeft = Math.max(10, window.innerWidth - editor.offsetWidth - 20);
+        var startTop = 170;
+        var maxTopStart = Math.max(0, window.innerHeight - editor.offsetHeight - 10);
+        editor.style.left = startLeft + 'px';
+        editor.style.top = Math.min(startTop, maxTopStart) + 'px';
+    }
+
+    var dragging = false;
+    var startX = 0;
+    var startY = 0;
+    var baseLeft = 0;
+    var baseTop = 0;
+
+    var onMove = function(ev) {
+        if (!dragging) return;
+        var nextLeft = baseLeft + (ev.clientX - startX);
+        var nextTop = baseTop + (ev.clientY - startY);
+
+        var maxLeft = Math.max(0, window.innerWidth - editor.offsetWidth);
+        var maxTop = Math.max(0, window.innerHeight - editor.offsetHeight);
+
+        nextLeft = Math.min(Math.max(0, nextLeft), maxLeft);
+        nextTop = Math.min(Math.max(0, nextTop), maxTop);
+
+        editor.style.left = nextLeft + 'px';
+        editor.style.top = nextTop + 'px';
+    };
+
+    var onUp = function() {
+        dragging = false;
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        editor.classList.remove('is-dragging');
+    };
+
+    handle.onmousedown = function(ev) {
+        if (closeBtn && ev.target === closeBtn) return;
+        dragging = true;
+        startX = ev.clientX;
+        startY = ev.clientY;
+
+        var rect = editor.getBoundingClientRect();
+        baseLeft = rect.left;
+        baseTop = rect.top;
+
+        editor.style.right = 'auto';
+        editor.style.left = baseLeft + 'px';
+        editor.style.top = baseTop + 'px';
+        editor.classList.add('is-dragging');
+
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    };
+}
+
+function syncTaskEditorWithSelection() {
+    var editor = document.getElementById('task-editor');
+    if (!editor) return;
+
+    var sel = getSelectedDateRange();
+    if (!sel) {
+        if (editor.dataset.source === 'selection') {
+            closeTaskEditor(false);
+        }
+        return;
+    }
+
+    if (!editor.innerHTML.trim() || editor.dataset.source !== 'selection') {
+        mostrarEditorTarea(null, sel.start, sel.end, true);
+        return;
+    }
+
+    var fi = document.getElementById('te-fecha-inicio');
+    var ff = document.getElementById('te-fecha-fin');
+    if (fi) fi.value = sel.start;
+    if (ff) ff.value = sel.end;
+
+    var title = editor.querySelector('.te-title');
+    if (title) {
+        title.textContent = `Configurar tarea (${sel.dates.length} ${sel.dates.length === 1 ? 'dia' : 'dias'})`;
+    }
 }
 
 // Clear selection when clicking outside the calendar / editor area
@@ -416,33 +582,68 @@ function editarActividad(evento) {
     mostrarEditorTarea(evento.extendedProps);
 }
 
-function mostrarEditorTarea(tarea, fechaPrefill, fechaFinPrefill) {
+function mostrarEditorTarea(tarea, fechaPrefill, fechaFinPrefill, fromSelection) {
     var editor = document.getElementById('task-editor');
     if (!editor) return;
 
     var isNew = !tarea || !tarea.id;
+    var selectionMode = !!fromSelection;
     var id = tarea && tarea.id ? tarea.id : `tarea-${Date.now()}`;
     var texto = tarea && tarea.texto ? tarea.texto : '';
     var fecha_inicio = tarea && tarea.fecha_inicio ? tarea.fecha_inicio : (fechaPrefill || new Date().toISOString().split('T')[0]);
     var fecha_fin = tarea && tarea.fecha_fin ? tarea.fecha_fin : (fechaFinPrefill || fechaPrefill || new Date().toISOString().split('T')[0]);
     var estado = tarea && tarea.estado ? tarea.estado : 'no_iniciada';
+    var usarTractores = !!(tarea && (tarea.usar_tractores || Number(tarea.cantidad_tractores) > 0));
+    var cantidadTractores = tarea && tarea.cantidad_tractores ? Number(tarea.cantidad_tractores) : 1;
+
+    editor.classList.add('is-open');
+    editor.dataset.source = selectionMode ? 'selection' : 'manual';
 
     editor.innerHTML = `
-        <h4 style="margin-top:0;">${isNew ? 'Nueva actividad' : 'Editar actividad'}</h4>
-        <div id="te-selection-placeholder"></div>
-        <label>Nombre</label>
-        <input id="te-texto" type="text" value="${escaparAtributo(texto)}">
-        <label>Fecha inicio</label>
-        <input id="te-fecha-inicio" type="date" value="${fecha_inicio}">
-        <label>Fecha fin</label>
-        <input id="te-fecha-fin" type="date" value="${fecha_fin}">
-        <label>Estado</label>
-        <select id="te-estado">
-            <option value="no_iniciada" ${estado === 'no_iniciada' ? 'selected' : ''}>No iniciada</option>
-            <option value="en_progreso" ${estado === 'en_progreso' ? 'selected' : ''}>En progreso</option>
-            <option value="completada" ${estado === 'completada' ? 'selected' : ''}>Completada</option>
-        </select>
-        <div style="margin-top:8px; display:flex; gap:8px;">
+        <div class="te-header te-drag-handle">
+            <h4 class="te-title" style="margin:0;">${selectionMode ? `Configurar tarea (${(getSelectedDateRange() && getSelectedDateRange().dates.length) || 1} ${(getSelectedDateRange() && getSelectedDateRange().dates.length) === 1 ? 'dia' : 'dias'})` : (isNew ? 'Nueva actividad' : 'Editar actividad')}</h4>
+            <button id="te-close" type="button" class="te-close-btn" aria-label="Cerrar">&times;</button>
+        </div>
+        <div id="te-selection-placeholder" class="te-selection-block"></div>
+
+        <div class="te-field-group">
+            <label for="te-texto">Nombre de la tarea</label>
+            <input id="te-texto" type="text" value="${escaparAtributo(texto)}">
+        </div>
+
+        <div class="te-grid-2">
+            <div class="te-field-group">
+                <label for="te-fecha-inicio">Fecha inicio</label>
+                <input id="te-fecha-inicio" type="date" value="${fecha_inicio}">
+            </div>
+            <div class="te-field-group">
+                <label for="te-fecha-fin">Fecha fin</label>
+                <input id="te-fecha-fin" type="date" value="${fecha_fin}">
+            </div>
+        </div>
+
+        <div class="te-field-group">
+            <label for="te-estado">Estado</label>
+            <select id="te-estado">
+                <option value="no_iniciada" ${estado === 'no_iniciada' ? 'selected' : ''}>No iniciada</option>
+                <option value="en_progreso" ${estado === 'en_progreso' ? 'selected' : ''}>En progreso</option>
+                <option value="completada" ${estado === 'completada' ? 'selected' : ''}>Completada</option>
+            </select>
+        </div>
+
+        <div class="te-tractor-box">
+            <label class="te-inline-check" for="te-usar-tractores">
+                <input id="te-usar-tractores" type="checkbox" ${usarTractores ? 'checked' : ''}>
+                ¿Se utilizarán tractores?
+            </label>
+            <div class="te-field-group te-tractor-count">
+                <label for="te-cantidad-tractores">Cantidad de tractores</label>
+                <input id="te-cantidad-tractores" type="number" min="1" step="1" value="${cantidadTractores}">
+                <p id="te-tractor-hint" class="te-help-text"></p>
+            </div>
+        </div>
+
+        <div class="te-actions">
             <button id="te-save" class="map-button map-button-primary">Guardar</button>
             <button id="te-cancel" class="map-button map-button-info">Cancelar</button>
             ${isNew ? '' : '<button id="te-delete" class="map-button map-button-warning">Eliminar</button>'}
@@ -455,7 +656,7 @@ function mostrarEditorTarea(tarea, fechaPrefill, fechaFinPrefill) {
         if (sel) {
             var placeholder = document.getElementById('te-selection-placeholder');
             var padres = (typeof window.getPrediosPadreList === 'function') ? window.getPrediosPadreList() : [];
-            var htmlSel = `<div style="margin-bottom:8px;"><strong>Asignar a:</strong><br>`;
+            var htmlSel = `<div class="te-assignment"><strong>Asignar a</strong>`;
             htmlSel += `<label>Predio padre</label><select id="te-target-parent"><option value="">(ninguno)</option>`;
             padres.forEach(function(p){ htmlSel += `<option value="${escaparHtml(p)}">${escaparHtml(p)}</option>`; });
             htmlSel += `</select>`;
@@ -473,15 +674,43 @@ function mostrarEditorTarea(tarea, fechaPrefill, fechaFinPrefill) {
         }
     } catch(e) { console.warn('editor selection inject error', e); }
 
-    document.getElementById('te-cancel').onclick = function(){ clearCalendarSelection(); editor.innerHTML = ''; };
+    var closeButton = document.getElementById('te-close');
+    if (closeButton) {
+        closeButton.onclick = function(){ closeTaskEditor(true); };
+    }
+
+    cargarDisponibilidadTractores().then(function() {
+        actualizarUITractoresEditor();
+    });
+
+    var usarTractorCheck = document.getElementById('te-usar-tractores');
+    if (usarTractorCheck) {
+        usarTractorCheck.addEventListener('change', actualizarUITractoresEditor);
+    }
+    actualizarUITractoresEditor();
+
+    enableTaskEditorDrag();
+
+    document.getElementById('te-cancel').onclick = function(){ closeTaskEditor(true); };
     document.getElementById('te-save').onclick = function(){
+        var usarTractor = !!(document.getElementById('te-usar-tractores') && document.getElementById('te-usar-tractores').checked);
+        var qtyInput = document.getElementById('te-cantidad-tractores');
+        var qty = qtyInput ? parseInt(qtyInput.value || '0', 10) : 0;
+        if (!usarTractor) qty = 0;
+        if (usarTractor) {
+            if (!qty || qty < 1) qty = 1;
+            if (tractorAvailability.total > 0 && qty > tractorAvailability.total) qty = tractorAvailability.total;
+        }
+
         var nuevo = {
             id: id,
             texto: document.getElementById('te-texto').value || 'Sin título',
             fecha_inicio: document.getElementById('te-fecha-inicio').value,
             fecha_fin: document.getElementById('te-fecha-fin').value,
             estado: document.getElementById('te-estado').value,
-            completada: (document.getElementById('te-estado').value === 'completada')
+            completada: (document.getElementById('te-estado').value === 'completada'),
+            usar_tractores: usarTractor,
+            cantidad_tractores: qty
         };
 
         // If there is a calendar selection, use it to set dates and assign to selected lote
@@ -517,8 +746,7 @@ function mostrarEditorTarea(tarea, fechaPrefill, fechaFinPrefill) {
         try { if (typeof window.syncTareasToFeatures === 'function') window.syncTareasToFeatures(); } catch(e){}
         try { if (typeof guardarManual === 'function') guardarManual(); } catch(e){}
         if (typeof registrarCambio === 'function') registrarCambio();
-        clearCalendarSelection();
-        editor.innerHTML = '';
+        closeTaskEditor(true);
     };
 
     if (!isNew) {
@@ -531,8 +759,7 @@ function mostrarEditorTarea(tarea, fechaPrefill, fechaFinPrefill) {
             try { if (typeof window.syncTareasToFeatures === 'function') window.syncTareasToFeatures(); } catch(e){}
             try { if (typeof guardarManual === 'function') guardarManual(); } catch(e){}
             if (typeof registrarCambio === 'function') registrarCambio();
-            clearCalendarSelection();
-            editor.innerHTML = '';
+            closeTaskEditor(true);
         };
     }
     // After rendering editor, update selection UI
@@ -796,9 +1023,7 @@ async function actualizarClima(lat = coordenadasActuales.lat, lon = coordenadasA
 function mostrarClima(datos) {
     const tempEl = document.getElementById('temp-display');
     const lluviaEl = document.getElementById('lluvia-display');
-    const iconoEl = document.getElementById('clima-icono');
-    
-    if (!tempEl || !lluviaEl || !iconoEl) return;
+    if (!tempEl || !lluviaEl) return;
     
     if (datos && datos.temperature_2m !== undefined) {
         const temp = Math.round(datos.temperature_2m);

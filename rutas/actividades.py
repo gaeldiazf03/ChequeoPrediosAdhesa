@@ -3,10 +3,14 @@ Rutas de Actividades y Dashboard (FASE 1)
 Endpoints protegidos por permisos granulares.
 """
 
+import json
+from datetime import datetime, timedelta
+
 from flask import Blueprint, request, jsonify, session
 from database import db
 from services.seguridad import require_permission, registrar_accion_sensible
 from services.actividades import GeneradorCronograma, CalculadorKPIs
+from utils.funciones import convertir_kml_a_geojson, convertir_geojson_a_kml
 
 actividades_bp = Blueprint('actividades', __name__, url_prefix='/api')
 
@@ -119,10 +123,246 @@ def obtener_slots_info():
         return jsonify({'error': str(e)}), 500
 
 
+@actividades_bp.route('/slots-hierarquia', methods=['GET'])
+@require_permission('ver_dashboard')
+def obtener_slots_hierarquia():
+    """Retorna jerarquía real padre/hijos de lotes por slot, extraída del KML almacenado."""
+    try:
+        resultado = []
+        for slot in db.obtener_todos_los_slots():
+            slot_id = slot[0]
+            nombre_slot = slot[1]
+            kml = slot[3] if len(slot) > 3 else None
+            geo = convertir_kml_a_geojson(kml) if kml else None
+
+            padres = []
+            hijos_por_padre = {}
+
+            if geo and 'features' in geo:
+                for feat in geo.get('features', []):
+                    props = feat.get('properties') or {}
+                    nombre_lote = str(props.get('name') or '').strip()
+                    if not nombre_lote:
+                        continue
+                    parent = str(props.get('parent') or '').strip()
+                    if parent:
+                        hijos_por_padre.setdefault(parent, []).append(nombre_lote)
+                    else:
+                        if nombre_lote not in padres:
+                            padres.append(nombre_lote)
+
+            padres.sort()
+            for p in list(hijos_por_padre.keys()):
+                hijos_por_padre[p] = sorted(list(set(hijos_por_padre[p])))
+
+            planes = []
+            for plan in db.obtener_planes_por_slot(slot_id):
+                meta = {}
+                if len(plan) > 9 and plan[9]:
+                    try:
+                        meta = json.loads(plan[9])
+                    except Exception:
+                        meta = {}
+                planes.append({
+                    'id': plan[0],
+                    'nombre': plan[2],
+                    'fecha_inicio': plan[4],
+                    'fecha_fin': plan[5],
+                    'estado': plan[6],
+                    'lote_padre': meta.get('lote_padre'),
+                    'lotes_hijos': meta.get('lotes_hijos', [])
+                })
+
+            resultado.append({
+                'slot_id': slot_id,
+                'slot_nombre': nombre_slot,
+                'padres': padres,
+                'hijos_por_padre': hijos_por_padre,
+                'planes': planes
+            })
+
+        return jsonify(resultado), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@actividades_bp.route('/planes/aplicar', methods=['POST'])
+@require_permission('crear_actividades')
+def crear_y_aplicar_plan():
+    """Crea un plan y aplica tareas automáticamente a lote padre e hijos seleccionados."""
+    try:
+        data = request.get_json() or {}
+        slot_id_raw = data.get('slot_id')
+        try:
+            slot_id = int(slot_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'slot_id inválido'}), 400
+        nombre = str(data.get('nombre') or '').strip()
+        lote_padre = str(data.get('lote_padre') or '').strip()
+        lotes_hijos = data.get('lotes_hijos') or []
+        fecha_inicio = str(data.get('fecha_inicio') or '').strip()
+
+        if not nombre or not lote_padre:
+            return jsonify({'error': 'nombre y lote_padre son requeridos'}), 400
+
+        if not fecha_inicio:
+            fecha_inicio = datetime.now().strftime('%Y-%m-%d')
+
+        try:
+            inicio_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
+        except ValueError:
+            return jsonify({'error': 'fecha_inicio inválida, use YYYY-MM-DD'}), 400
+
+        lotes_hijos = [str(x).strip() for x in lotes_hijos if str(x).strip()]
+
+        slot = None
+        for s in db.obtener_todos_los_slots():
+            if s[0] == slot_id:
+                slot = s
+                break
+        if not slot:
+            return jsonify({'error': 'slot no encontrado'}), 404
+
+        kml = slot[3]
+        if not kml:
+            return jsonify({'error': 'El slot no tiene KML cargado'}), 400
+
+        geo = convertir_kml_a_geojson(kml)
+        if not geo or 'features' not in geo:
+            return jsonify({'error': 'No se pudo leer el KML del slot'}), 400
+
+        objetivos = [lote_padre] + lotes_hijos
+        objetivos_set = set(objetivos)
+
+        # Catálogo predefinido: se aplica en orden de ID y agrupado por etapa.
+        catalogo = db.obtener_catalogo_actividades(solo_activas=True)
+        if not catalogo:
+            return jsonify({'error': 'No hay actividades predefinidas en el catálogo'}), 400
+
+        tareas_plan = []
+        etapas_resumen = {}
+        offset_dias = 0
+        etapa_anterior = None
+        timestamp_base = int(datetime.now().timestamp())
+
+        for pos, actividad in enumerate(catalogo, start=1):
+            proceso = str(actividad[1] or '').strip()
+            etapa = str(actividad[2] or '').strip() or 'General'
+            descripcion = str(actividad[3] or '').strip()
+            como_se_realiza = str(actividad[4] or '').strip()
+            programacion = str(actividad[5] or '').strip()
+
+            if not proceso:
+                continue
+
+            if etapa_anterior is not None and etapa != etapa_anterior:
+                # Separador temporal entre etapas para que en gantt sea más legible.
+                offset_dias += 1
+
+            ini = inicio_dt + timedelta(days=offset_dias)
+            fin = ini
+            tareas_plan.append({
+                'id': f"plan-{timestamp_base}-{pos}",
+                'texto': proceso,
+                'etapa': etapa,
+                'descripcion': descripcion,
+                'como_se_realiza': como_se_realiza,
+                'programacion_recomendada': programacion,
+                'estado': 'no_iniciada',
+                'completada': False,
+                'fecha_inicio': ini.strftime('%Y-%m-%d'),
+                'fecha_fin': fin.strftime('%Y-%m-%d')
+            })
+            etapas_resumen[etapa] = etapas_resumen.get(etapa, 0) + 1
+            etapa_anterior = etapa
+            offset_dias += 1
+
+        if not tareas_plan:
+            return jsonify({'error': 'El catálogo no contiene procesos válidos'}), 400
+
+        aplicados = []
+        for feat in geo.get('features', []):
+            props = feat.get('properties') or {}
+            nombre_lote = str(props.get('name') or '').strip()
+            if nombre_lote in objetivos_set:
+                props['tareas'] = [dict(t) for t in tareas_plan]
+                feat['properties'] = props
+                aplicados.append(nombre_lote)
+
+        if not aplicados:
+            return jsonify({'error': 'No se encontraron lotes objetivo en el KML'}), 400
+
+        meta = {
+            'lote_padre': lote_padre,
+            'lotes_hijos': lotes_hijos,
+            'tareas_generadas': len(tareas_plan),
+            'etapas': etapas_resumen,
+            'lotes_aplicados': aplicados,
+            'fecha_inicio': fecha_inicio
+        }
+
+        plan_id = db.crear_plan(
+            slot_id=slot_id,
+            nombre=nombre,
+            descripcion=f'Plan aplicado a {lote_padre} y {len(lotes_hijos)} lotes hijos',
+            fecha_inicio=fecha_inicio,
+            fecha_fin=tareas_plan[-1]['fecha_fin'] if tareas_plan else fecha_inicio,
+            metadata_json=json.dumps(meta, ensure_ascii=False)
+        )
+
+        if not plan_id:
+            return jsonify({'error': 'No se pudo crear el plan en base de datos'}), 500
+
+        nuevo_kml = convertir_geojson_a_kml(geo)
+        if not db.guardar_kml_en_slot(slot_id, nuevo_kml):
+            return jsonify({'error': 'No se pudo guardar el KML actualizado'}), 500
+
+        db.registrar_log(obtener_usuario_actual(), 'Crear y aplicar plan', f'slot={slot_id}, plan={plan_id}, lotes={",".join(aplicados)}')
+
+        return jsonify({
+            'ok': True,
+            'plan_id': plan_id,
+            'slot_id': slot_id,
+            'lotes_aplicados': aplicados,
+            'tareas_generadas': len(tareas_plan)
+        }), 201
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @actividades_bp.route('/slots', methods=['GET'])
 def obtener_slots_alias():
     """Alias por compatibilidad con versiones anteriores: /api/slots -> /api/slots-info"""
     return obtener_slots_info()
+
+
+@actividades_bp.route('/catalogo/etapas-resumen', methods=['GET'])
+@require_permission('crear_actividades')
+def catalogo_etapas_resumen():
+    """Retorna resumen de actividades activas agrupadas por etapa."""
+    try:
+        actividades = db.obtener_catalogo_actividades(solo_activas=True)
+        etapas = {}
+        orden = []
+
+        for actividad in actividades:
+            etapa = str(actividad[2] or '').strip() or 'Sin etapa'
+            if etapa not in etapas:
+                etapas[etapa] = 0
+                orden.append(etapa)
+            etapas[etapa] += 1
+
+        data = [{
+            'etapa': etapa,
+            'cantidad': etapas[etapa]
+        } for etapa in orden]
+
+        return jsonify({
+            'total_actividades': len(actividades),
+            'etapas': data
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 # === ENDPOINTS DE TIMELINE AUTOMÁTICO ===
 

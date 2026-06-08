@@ -1,5 +1,26 @@
 .admin-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
     margin-bottom: 10px;
+}
+
+.admin-tractores .page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.admin-tractores .page-header h2 {
+    margin: 0 0 4px;
+}
+
+.admin-tractores .page-header p {
+    margin: 0;
+    color: #64748b;
+    font-size: 14px;
 }
 
 #modalTractor {
@@ -15,29 +36,112 @@
     background: rgba(0, 0, 0, 0.4);
     align-items: center;
     justify-content: center;
+    padding: 16px;
+    z-index: 1200;
 }
 
 .modal .modal-dialog {
-    max-width: 600px;
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    max-width: 560px;
+    margin: 0 16px;
 }
 
 .modal .modal-content {
     background: #fff;
     padding: 0;
-    border-radius: 4px;
+    width: 100%;
+    max-width: 100%;
+    border-radius: 14px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.28);
+    overflow: hidden;
+    margin: 0 auto;
 }
 
 .modal .modal-header,
 .modal .modal-footer {
-    padding: 12px;
+    padding: 14px 18px;
 }
 
 .modal .modal-body {
-    padding: 12px;
+    padding: 16px 18px;
+}
+
+.modal .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.modal .modal-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.modal #formTractor {
+    display: grid;
+    gap: 12px;
+}
+
+.modal .form-group {
+    gap: 8px;
+}
+
+.modal label {
+    font-weight: 600;
+    color: #334155;
+}
+
+.modal .form-control {
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 10px 12px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.modal .form-control:focus {
+    outline: none;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+.modal .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    border-top: 1px solid #e2e8f0;
+    background: #f8fafc;
 }
 
 .modal .close {
-    background: none;
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    background: #e2e8f0;
     border: 0;
     font-size: 1.2rem;
+    line-height: 1;
+    cursor: pointer;
+    color: #1f2937;
+}
+
+.modal .close:hover {
+    background: #cbd5e1;
+}
+
+@media (max-width: 768px) {
+    .admin-tractores .page-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .admin-actions {
+        margin-bottom: 0;
+    }
 }

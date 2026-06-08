@@ -1,12 +1,11 @@
 """
-Rutas de administración: gestión de roles, permisos, usuarios y auditoría.
+Rutas de administración: gestión de usuarios, permisos operativos y auditoría.
 Todas estas rutas requieren permiso 'gestionar_usuarios' (solo administrador).
 """
 
 from flask import Blueprint, render_template, request, jsonify, session
 from database import db
 from services.seguridad import require_permission, registrar_accion_sensible
-from services.roles import GestorRoles, ValidadorAcceso
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
@@ -19,166 +18,6 @@ def obtener_id_usuario_actual():
     return session.get('user_id')
 
 # === RUTAS PRINCIPALES ===
-
-@admin_bp.route('/roles', methods=['GET'])
-@require_permission('gestionar_usuarios')
-def listar_roles():
-    """Lista todos los roles con sus permisos."""
-    try:
-        roles = db.obtener_todos_los_roles()
-        roles_con_permisos = []
-        
-        for rol in roles:
-            permisos = db.obtener_permisos_de_rol(rol[0])
-            roles_con_permisos.append({
-                'id': rol[0],
-                'nombre': rol[1],
-                'descripcion': rol[2],
-                'permisos_count': len(permisos)
-            })
-        
-        usuario_id = obtener_id_usuario_actual()
-        registrar_accion_sensible(
-            usuario_id, obtener_usuario_actual(),
-            'listar_roles', 'roles'
-        )
-        
-        if request.accept_mimetypes.best == 'application/json':
-            return jsonify(roles_con_permisos)
-        
-        # Renderizar HTML si es HTML request
-        return render_template('admin/roles.html', roles=roles_con_permisos)
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@admin_bp.route('/roles/<int:rol_id>', methods=['GET'])
-@require_permission('gestionar_usuarios')
-def ver_rol(rol_id):
-    """Ver detalles de un rol específico."""
-    try:
-        rol_completo = GestorRoles.obtener_rol_completo(rol_id)
-        
-        if not rol_completo:
-            return jsonify({'error': 'Rol no encontrado'}), 404
-        
-        usuario_id = obtener_id_usuario_actual()
-        registrar_accion_sensible(
-            usuario_id, obtener_usuario_actual(),
-            'ver_rol', f'rol_id:{rol_id}'
-        )
-        
-        if request.accept_mimetypes.best == 'application/json':
-            return jsonify(rol_completo)
-        
-        return render_template('admin/rol_detalle.html', rol=rol_completo)
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@admin_bp.route('/roles', methods=['POST'])
-@require_permission('gestionar_usuarios')
-def crear_rol():
-    """Crea un nuevo rol con permisos especificados."""
-    try:
-        datos = request.get_json()
-        nombre = datos.get('nombre')
-        descripcion = datos.get('descripcion', '')
-        nombres_permisos = datos.get('permisos', [])
-        
-        if not nombre:
-            return jsonify({'error': 'Nombre de rol requerido'}), 400
-        
-        rol_id = GestorRoles.crear_rol_personalizado(nombre, descripcion, nombres_permisos)
-        
-        if not rol_id:
-            return jsonify({'error': 'Error creando rol'}), 500
-        
-        usuario_id = obtener_id_usuario_actual()
-        registrar_accion_sensible(
-            usuario_id, obtener_usuario_actual(),
-            'crear_rol', f'rol:{nombre}',
-            detalles=f'Permisos: {", ".join(nombres_permisos)}'
-        )
-        
-        return jsonify({
-            'mensaje': 'Rol creado',
-            'rol_id': rol_id
-        }), 201
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@admin_bp.route('/usuarios/<int:usuario_id>/roles', methods=['GET'])
-@require_permission('gestionar_usuarios')
-def listar_roles_usuario(usuario_id):
-    """Lista roles asignados a un usuario."""
-    try:
-        roles = db.obtener_roles_de_usuario(usuario_id)
-        
-        roles_datos = [{
-            'id': r[0],
-            'nombre': r[1],
-            'descripcion': r[2],
-            'fecha_asignacion': r[3]
-        } for r in roles]
-        
-        usuario_id_actual = obtener_id_usuario_actual()
-        registrar_accion_sensible(
-            usuario_id_actual, obtener_usuario_actual(),
-            'listar_roles_usuario', f'usuario_id:{usuario_id}'
-        )
-        
-        return jsonify(roles_datos)
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@admin_bp.route('/usuarios/<int:usuario_id>/roles', methods=['POST'])
-@require_permission('gestionar_usuarios')
-def asignar_rol_usuario(usuario_id):
-    """Asigna un rol a un usuario."""
-    try:
-        datos = request.get_json()
-        rol_id = datos.get('rol_id')
-        
-        if not rol_id:
-            return jsonify({'error': 'rol_id requerido'}), 400
-        
-        success = GestorRoles.asignar_rol_a_usuario(usuario_id, rol_id)
-        
-        if success:
-            usuario_actual_id = obtener_id_usuario_actual()
-            registrar_accion_sensible(
-                usuario_actual_id, obtener_usuario_actual(),
-                'asignar_rol', f'usuario_id:{usuario_id}, rol_id:{rol_id}',
-                resultado='exitoso'
-            )
-            return jsonify({'mensaje': 'Rol asignado'}), 200
-        else:
-            return jsonify({'error': 'Error asignando rol (posiblemente ya asignado)'}), 400
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@admin_bp.route('/usuarios/<int:usuario_id>/roles/<int:rol_id>', methods=['DELETE'])
-@require_permission('gestionar_usuarios')
-def revocar_rol_usuario(usuario_id, rol_id):
-    """Revoca un rol de un usuario."""
-    try:
-        GestorRoles.revocar_rol_de_usuario(usuario_id, rol_id)
-        
-        usuario_actual_id = obtener_id_usuario_actual()
-        registrar_accion_sensible(
-            usuario_actual_id, obtener_usuario_actual(),
-            'revocar_rol', f'usuario_id:{usuario_id}, rol_id:{rol_id}',
-            resultado='exitoso'
-        )
-        
-        return jsonify({'mensaje': 'Rol revocado'}), 200
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 @admin_bp.route('/permisos', methods=['GET'])
 @require_permission('gestionar_usuarios')
@@ -205,24 +44,6 @@ def listar_permisos():
         )
         
         return jsonify(permisos_datos)
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@admin_bp.route('/usuarios/<int:usuario_id>/permisos', methods=['GET'])
-@require_permission('gestionar_usuarios')
-def listar_permisos_usuario(usuario_id):
-    """Lista permisos de un usuario (agrupados por categoría)."""
-    try:
-        permisos_agrupados = GestorRoles.obtener_permisos_usuario_agrupados(usuario_id)
-        
-        usuario_id_actual = obtener_id_usuario_actual()
-        registrar_accion_sensible(
-            usuario_id_actual, obtener_usuario_actual(),
-            'listar_permisos_usuario', f'usuario_id:{usuario_id}'
-        )
-        
-        return jsonify(permisos_agrupados)
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -294,26 +115,6 @@ def estadisticas_auditoria():
         )
         
         return jsonify(stats_datos)
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-# === ESTADÍSTICAS ===
-
-@admin_bp.route('/estadisticas/roles', methods=['GET'])
-@require_permission('gestionar_usuarios')
-def estadisticas_roles():
-    """Obtiene estadísticas de roles y permisos."""
-    try:
-        stats = GestorRoles.obtener_estadisticas_roles()
-        
-        usuario_id = obtener_id_usuario_actual()
-        registrar_accion_sensible(
-            usuario_id, obtener_usuario_actual(),
-            'ver_estadisticas_roles', 'roles'
-        )
-        
-        return jsonify(stats)
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -510,85 +311,122 @@ def desvincular_tractor_route(tractor_id):
 @require_permission('gestionar_usuarios')
 def listar_planes():
     try:
-        slot_id = request.args.get('slot_id', type=int)
-        if slot_id is None:
-            # Mostrar todos o pedir slot
-            return render_template('admin/planes.html', planes=[])
-        planes = db.obtener_planes_por_slot(slot_id)
-        planes_datos = [{
-            'id': p[0], 'slot_id': p[1], 'nombre': p[2], 'descripcion': p[3], 'fecha_inicio': p[4], 'fecha_fin': p[5], 'estado': p[6], 'creada_en': p[7], 'actualizada_en': p[8]
-        } for p in planes]
-
-        if request.accept_mimetypes.best == 'application/json':
-            return jsonify(planes_datos)
-
-        return render_template('admin/planes.html', planes=planes_datos)
+        return render_template('admin/planes.html', planes=[])
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
-@admin_bp.route('/planes', methods=['POST'])
+@admin_bp.route('/actividades-catalogo', methods=['GET'])
 @require_permission('gestionar_usuarios')
-def crear_plan_route():
+def listar_actividades_catalogo_route():
+    try:
+        solo_activas = request.args.get('solo_activas', '0') in ('1', 'true', 'True')
+        actividades = db.obtener_catalogo_actividades(solo_activas=solo_activas)
+        actividades_datos = [{
+            'id': a[0],
+            'nombre': a[1],
+            'etapa': a[2],
+            'descripcion': a[3],
+            'como_se_realiza': a[4],
+            'programacion_recomendada': a[5],
+            'activa': bool(a[6]),
+            'creada_en': a[7],
+            'actualizada_en': a[8]
+        } for a in actividades]
+        return jsonify(actividades_datos)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/actividades-catalogo', methods=['POST'])
+@require_permission('gestionar_usuarios')
+def crear_actividad_catalogo_route():
     try:
         datos = request.get_json() or request.form
-        slot_id = datos.get('slot_id')
-        nombre = datos.get('nombre')
-        if not slot_id or not nombre:
-            return jsonify({'error': 'slot_id y nombre son requeridos'}), 400
-        descripcion = datos.get('descripcion')
-        fecha_inicio = datos.get('fecha_inicio')
-        fecha_fin = datos.get('fecha_fin')
+        nombre = (datos.get('nombre') or '').strip()
+        if not nombre:
+            return jsonify({'error': 'nombre es requerido'}), 400
 
-        nuevo = db.crear_plan(slot_id=int(slot_id), nombre=nombre, descripcion=descripcion, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
-        if not nuevo:
-            return jsonify({'error': 'No se pudo crear el plan'}), 400
-        return jsonify({'mensaje': 'Plan creado', 'id': nuevo}), 201
+        activa_raw = datos.get('activa', True)
+        activa = activa_raw in (True, 1, '1', 'true', 'True', 'on')
+        etapa = (datos.get('etapa') or '').strip()
+        descripcion = (datos.get('descripcion') or '').strip()
+        como_se_realiza = (datos.get('como_se_realiza') or '').strip()
+        programacion_recomendada = (datos.get('programacion_recomendada') or '').strip()
+
+        nuevo_id = db.crear_actividad_catalogo(
+            nombre=nombre,
+            activa=activa,
+            etapa=etapa,
+            descripcion=descripcion,
+            como_se_realiza=como_se_realiza,
+            programacion_recomendada=programacion_recomendada
+        )
+        if not nuevo_id:
+            return jsonify({'error': 'No se pudo crear la actividad (posible duplicado)'}), 400
+
+        db.registrar_log(obtener_usuario_actual(), 'Crear actividad catálogo', f'ID: {nuevo_id}, nombre: {nombre}')
+        return jsonify({'mensaje': 'Actividad creada', 'id': nuevo_id}), 201
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
-@admin_bp.route('/planes/<int:plan_id>', methods=['GET'])
+@admin_bp.route('/actividades-catalogo/<int:actividad_id>', methods=['GET'])
 @require_permission('gestionar_usuarios')
-def ver_plan(plan_id):
+def ver_actividad_catalogo_route(actividad_id):
     try:
-        p = db.obtener_plan_por_id(plan_id)
-        if not p:
+        a = db.obtener_actividad_catalogo_por_id(actividad_id)
+        if not a:
             return jsonify({'error': 'No encontrado'}), 404
-        datos = {'id': p[0], 'slot_id': p[1], 'nombre': p[2], 'descripcion': p[3], 'fecha_inicio': p[4], 'fecha_fin': p[5], 'estado': p[6], 'creada_en': p[7], 'actualizada_en': p[8]}
-        return jsonify(datos)
+        return jsonify({
+            'id': a[0],
+            'nombre': a[1],
+            'etapa': a[2],
+            'descripcion': a[3],
+            'como_se_realiza': a[4],
+            'programacion_recomendada': a[5],
+            'activa': bool(a[6]),
+            'creada_en': a[7],
+            'actualizada_en': a[8]
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
-@admin_bp.route('/planes/<int:plan_id>', methods=['PATCH'])
+@admin_bp.route('/actividades-catalogo/<int:actividad_id>', methods=['PATCH'])
 @require_permission('gestionar_usuarios')
-def actualizar_plan_route(plan_id):
+def actualizar_actividad_catalogo_route(actividad_id):
     try:
         datos = request.get_json() or {}
-        success = db.actualizar_plan(
-            plan_id,
+        activa = datos.get('activa')
+        if activa is not None:
+            activa = activa in (True, 1, '1', 'true', 'True', 'on')
+
+        success = db.actualizar_actividad_catalogo(
+            actividad_id,
             nombre=datos.get('nombre'),
+            activa=activa,
+            etapa=datos.get('etapa'),
             descripcion=datos.get('descripcion'),
-            fecha_inicio=datos.get('fecha_inicio'),
-            fecha_fin=datos.get('fecha_fin'),
-            estado=datos.get('estado'),
-            metadata_json=datos.get('metadata_json')
+            como_se_realiza=datos.get('como_se_realiza'),
+            programacion_recomendada=datos.get('programacion_recomendada')
         )
         if not success:
             return jsonify({'error': 'No se actualizó'}), 400
+        db.registrar_log(obtener_usuario_actual(), 'Actualizar actividad catálogo', f'ID: {actividad_id}')
         return jsonify({'mensaje': 'Actualizado'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
-@admin_bp.route('/planes/<int:plan_id>', methods=['DELETE'])
+@admin_bp.route('/actividades-catalogo/<int:actividad_id>', methods=['DELETE'])
 @require_permission('gestionar_usuarios')
-def eliminar_plan_route(plan_id):
+def eliminar_actividad_catalogo_route(actividad_id):
     try:
-        success = db.eliminar_plan(plan_id)
+        success = db.eliminar_actividad_catalogo(actividad_id)
         if not success:
             return jsonify({'error': 'No se eliminó (quizá no existe)'}), 400
+        db.registrar_log(obtener_usuario_actual(), 'Eliminar actividad catálogo', f'ID: {actividad_id}')
         return jsonify({'mensaje': 'Eliminado'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500

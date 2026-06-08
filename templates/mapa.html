@@ -4,7 +4,6 @@
 <head>
     <meta charset="UTF-8">
     <title>Adhesa</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/common.css') }}">
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
     <link rel="stylesheet" href="{{ url_for('static', filename='css/mapa.css') }}">
@@ -18,7 +17,7 @@
     <nav class="adhesa-navbar">
         <div class="navbar-left">
             <button onclick="volverAlterior()" class="navbar-btn">Volver</button>
-            <h2 class="navbar-title">Gestion de Adhesa</h2>
+            <h2 style="margin: 0; display: inline-block; margin-left: 20px;">Gestion de Adhesa</h2>
         </div>
         <div class="navbar-right">
             <div id="clima-widget" class="clima-widget">
@@ -70,9 +69,10 @@
         <div class="calendar-column">
             <div class="calendar-panel">
                 <div id="calendar"></div>
+                <div id="selected-dates-info" class="selected-dates-info"></div>
+                <div id="task-editor" class="task-editor"></div>
             </div>
 
-            <div id="task-editor" class="task-editor"></div>
         </div>
 
         <div id="tasks-row" class="tasks-row">
@@ -100,11 +100,11 @@
                     </table>
                 </div>
             </div>
-            <div id="sidebar-info" class="is-hidden"></div>
+            <div id="sidebar-info" style="display:none;"></div>
         </div>
 
         <div id="gantt-row" class="gantt-row">
-            <div id="gantt-container" class="gantt-container"></div>
+            <div id="gantt-container" style="margin-top:12px;"></div>
         </div>
     </section>
 

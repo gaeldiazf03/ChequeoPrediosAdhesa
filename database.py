@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import unicodedata
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 
@@ -168,6 +169,30 @@ class DatabaseManager:
                           actualizada_en TEXT,
                           metadata_json TEXT,
                           FOREIGN KEY(slot_id) REFERENCES slots(id))''')
+
+            c.execute('''CREATE TABLE IF NOT EXISTS catalogo_actividades
+                         (id INTEGER PRIMARY KEY,
+                          nombre TEXT NOT NULL UNIQUE,
+                          etapa TEXT,
+                          descripcion TEXT,
+                          como_se_realiza TEXT,
+                          programacion_recomendada TEXT,
+                          activa INTEGER DEFAULT 1,
+                          creada_en TEXT,
+                          actualizada_en TEXT)''')
+
+            c.execute('PRAGMA table_info(catalogo_actividades)')
+            catalogo_cols = [r[1] for r in c.fetchall()]
+            if 'etapa' not in catalogo_cols:
+                c.execute('ALTER TABLE catalogo_actividades ADD COLUMN etapa TEXT')
+            if 'descripcion' not in catalogo_cols:
+                c.execute('ALTER TABLE catalogo_actividades ADD COLUMN descripcion TEXT')
+            if 'como_se_realiza' not in catalogo_cols:
+                c.execute('ALTER TABLE catalogo_actividades ADD COLUMN como_se_realiza TEXT')
+            if 'programacion_recomendada' not in catalogo_cols:
+                c.execute('ALTER TABLE catalogo_actividades ADD COLUMN programacion_recomendada TEXT')
+
+            self._sembrar_catalogo_actividades_default(c)
 
             c.execute('''CREATE TABLE IF NOT EXISTS reportes_programados
                          (id INTEGER PRIMARY KEY,
@@ -458,6 +483,118 @@ class DatabaseManager:
             except sqlite3.IntegrityError:
                 pass
 
+    def _sembrar_catalogo_actividades_default(self, cursor):
+        """Inserta catálogo base solo si está vacío, respetando orden/ID de Excel."""
+        cursor.execute('SELECT COUNT(*) FROM catalogo_actividades')
+        if (cursor.fetchone()[0] or 0) > 0:
+            return
+
+        ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        registros = self._leer_catalogo_desde_excel_default()
+        if not registros:
+            registros = self._catalogo_fallback_minimo()
+
+        for orden, item in enumerate(registros, start=1):
+            cursor.execute('''INSERT INTO catalogo_actividades
+                              (id, nombre, etapa, descripcion, como_se_realiza, programacion_recomendada, activa, creada_en, actualizada_en)
+                              VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)''',
+                           (
+                               orden,
+                               item.get('nombre') or '',
+                               item.get('etapa') or '',
+                               item.get('descripcion') or '',
+                               item.get('como_se_realiza') or '',
+                               item.get('programacion_recomendada') or '',
+                               ahora,
+                               ahora,
+                           ))
+
+    def _normalizar_texto_cabecera(self, texto):
+        texto = (texto or '').strip().lower()
+        texto = unicodedata.normalize('NFKD', texto)
+        texto = ''.join(ch for ch in texto if not unicodedata.combining(ch))
+        return texto
+
+    def _leer_catalogo_desde_excel_default(self):
+        """Lee RESUMEN/Control acts. ADEHSA.xlsx y retorna filas ordenadas."""
+        try:
+            from openpyxl import load_workbook
+        except Exception:
+            return []
+
+        excel_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'RESUMEN', 'Control acts. ADEHSA.xlsx')
+        if not os.path.exists(excel_path):
+            return []
+
+        try:
+            wb = load_workbook(excel_path, data_only=True)
+        except Exception:
+            return []
+
+        if 'Resumen Procesos' not in wb.sheetnames:
+            return []
+
+        ws = wb['Resumen Procesos']
+
+        header_row = None
+        header_map = {}
+        for r in range(1, min(ws.max_row, 100) + 1):
+            row_vals = [ws.cell(row=r, column=c).value for c in range(1, ws.max_column + 1)]
+            normalizados = [self._normalizar_texto_cabecera(str(v) if v is not None else '') for v in row_vals]
+            if 'proceso' in normalizados:
+                header_row = r
+                for idx, val in enumerate(normalizados, start=1):
+                    if val:
+                        header_map[val] = idx
+                break
+
+        if not header_row or 'proceso' not in header_map:
+            return []
+
+        idx_etapa = header_map.get('etapa')
+        idx_nombre = header_map.get('proceso')
+        idx_descripcion = None
+        idx_como = None
+        idx_programacion = None
+
+        for key, idx in header_map.items():
+            if 'descripcion' in key and idx_descripcion is None:
+                idx_descripcion = idx
+            if 'como se realiza' in key and idx_como is None:
+                idx_como = idx
+            if 'programacion recomendada' in key and idx_programacion is None:
+                idx_programacion = idx
+
+        registros = []
+        for r in range(header_row + 1, ws.max_row + 1):
+            nombre = ws.cell(row=r, column=idx_nombre).value
+            nombre = str(nombre).strip() if nombre is not None else ''
+            if not nombre:
+                continue
+
+            etapa = ws.cell(row=r, column=idx_etapa).value if idx_etapa else ''
+            descripcion = ws.cell(row=r, column=idx_descripcion).value if idx_descripcion else ''
+            como = ws.cell(row=r, column=idx_como).value if idx_como else ''
+            programacion = ws.cell(row=r, column=idx_programacion).value if idx_programacion else ''
+
+            registros.append({
+                'nombre': str(nombre).strip(),
+                'etapa': str(etapa).strip() if etapa is not None else '',
+                'descripcion': str(descripcion).strip() if descripcion is not None else '',
+                'como_se_realiza': str(como).strip() if como is not None else '',
+                'programacion_recomendada': str(programacion).strip() if programacion is not None else '',
+            })
+
+        return registros
+
+    def _catalogo_fallback_minimo(self):
+        """Fallback mínimo cuando no se puede leer el Excel en inicialización."""
+        return [
+            {'nombre': 'Reconocimiento del predio', 'etapa': 'Diagnóstico', 'descripcion': '', 'como_se_realiza': '', 'programacion_recomendada': ''},
+            {'nombre': 'Análisis de suelo', 'etapa': 'Diagnóstico', 'descripcion': '', 'como_se_realiza': '', 'programacion_recomendada': ''},
+            {'nombre': 'Preparación de terreno', 'etapa': 'Preparación', 'descripcion': '', 'como_se_realiza': '', 'programacion_recomendada': ''},
+        ]
+
     def actualizar_correo_usuario(self, user_id, correo=None):
         with self._get_connection() as conn:
             c = conn.cursor()
@@ -486,6 +623,16 @@ class DatabaseManager:
             c = conn.cursor()
             c.execute('SELECT id, nombre_real FROM slots WHERE slug = ?', (slug,))
             return c.fetchone()
+
+    def actualizar_nombre_slot(self, slot_id, nuevo_nombre):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            nombre = (nuevo_nombre or '').strip()
+            if not nombre:
+                return False
+            c.execute('UPDATE slots SET nombre_real = ? WHERE id = ?', (nombre, slot_id))
+            conn.commit()
+            return c.rowcount > 0
 
     def actualizar_metadatos_slot(self, slot_id, usuario, fecha):
         with self._get_connection() as conn:
@@ -974,174 +1121,272 @@ class DatabaseManager:
                          ORDER BY fecha_vencimiento ASC''', (fecha_limite,))
             return c.fetchall()
 
-        # === MÉTODOS DE GESTIÓN DE TRACTORES ===
+    # === MÉTODOS DE GESTIÓN DE TRACTORES ===
 
-        def crear_tractor(self, placa, modelo=None, ano=None, estado='activo', slot_id=None, metadata_json=''):
-            """Crea un registro de tractor/unidad."""
-            with self._get_connection() as conn:
-                c = conn.cursor()
-                ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                try:
-                    c.execute('''INSERT INTO tractores (placa, modelo, ano, estado, slot_id, metadata_json, creada_en, actualizada_en)
-                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-                              (placa, modelo, ano, estado, slot_id, metadata_json, ahora, ahora))
-                    conn.commit()
-                    return c.lastrowid
-                except sqlite3.IntegrityError:
-                    return None
+    def crear_tractor(self, placa, modelo=None, ano=None, estado='activo', slot_id=None, metadata_json=''):
+        """Crea un registro de tractor/unidad."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                c.execute('''INSERT INTO tractores (placa, modelo, ano, estado, slot_id, metadata_json, creada_en, actualizada_en)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                          (placa, modelo, ano, estado, slot_id, metadata_json, ahora, ahora))
+                conn.commit()
+                return c.lastrowid
+            except sqlite3.IntegrityError:
+                return None
 
-        def obtener_todos_los_tractores(self, slot_id=None):
-            """Retorna lista de tractores, opcionalmente filtrados por slot."""
-            with self._get_connection() as conn:
-                c = conn.cursor()
-                if slot_id is None:
-                    c.execute('SELECT id, placa, modelo, ano, estado, slot_id, metadata_json, creada_en, actualizada_en FROM tractores ORDER BY id DESC')
-                else:
-                    c.execute('SELECT id, placa, modelo, ano, estado, slot_id, metadata_json, creada_en, actualizada_en FROM tractores WHERE slot_id = ? ORDER BY id DESC', (slot_id,))
-                return c.fetchall()
+    def obtener_todos_los_tractores(self, slot_id=None):
+        """Retorna lista de tractores, opcionalmente filtrados por slot."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            if slot_id is None:
+                c.execute('SELECT id, placa, modelo, ano, estado, slot_id, metadata_json, creada_en, actualizada_en FROM tractores ORDER BY id DESC')
+            else:
+                c.execute('SELECT id, placa, modelo, ano, estado, slot_id, metadata_json, creada_en, actualizada_en FROM tractores WHERE slot_id = ? ORDER BY id DESC', (slot_id,))
+            return c.fetchall()
 
-        def obtener_tractor_por_id(self, tractor_id):
-            with self._get_connection() as conn:
-                c = conn.cursor()
-                c.execute('SELECT id, placa, modelo, ano, estado, slot_id, metadata_json, creada_en, actualizada_en FROM tractores WHERE id = ?', (tractor_id,))
-                return c.fetchone()
+    def obtener_tractor_por_id(self, tractor_id):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('SELECT id, placa, modelo, ano, estado, slot_id, metadata_json, creada_en, actualizada_en FROM tractores WHERE id = ?', (tractor_id,))
+            return c.fetchone()
 
-        def actualizar_tractor(self, tractor_id, placa=None, modelo=None, ano=None, estado=None, slot_id=None, metadata_json=None):
-            """Actualiza campos proporcionados de un tractor."""
-            campos = []
-            params = []
-            if placa is not None:
-                campos.append('placa = ?')
-                params.append(placa)
-            if modelo is not None:
-                campos.append('modelo = ?')
-                params.append(modelo)
-            if ano is not None:
-                campos.append('ano = ?')
-                params.append(ano)
-            if estado is not None:
-                campos.append('estado = ?')
-                params.append(estado)
-            if slot_id is not None:
-                campos.append('slot_id = ?')
-                params.append(slot_id)
-            if metadata_json is not None:
-                campos.append('metadata_json = ?')
-                params.append(metadata_json)
+    def actualizar_tractor(self, tractor_id, placa=None, modelo=None, ano=None, estado=None, slot_id=None, metadata_json=None):
+        """Actualiza campos proporcionados de un tractor."""
+        campos = []
+        params = []
+        if placa is not None:
+            campos.append('placa = ?')
+            params.append(placa)
+        if modelo is not None:
+            campos.append('modelo = ?')
+            params.append(modelo)
+        if ano is not None:
+            campos.append('ano = ?')
+            params.append(ano)
+        if estado is not None:
+            campos.append('estado = ?')
+            params.append(estado)
+        if slot_id is not None:
+            campos.append('slot_id = ?')
+            params.append(slot_id)
+        if metadata_json is not None:
+            campos.append('metadata_json = ?')
+            params.append(metadata_json)
 
-            if not campos:
+        if not campos:
+            return False
+
+        ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        campos.append('actualizada_en = ?')
+        params.append(ahora)
+        params.append(tractor_id)
+
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            query = f"UPDATE tractores SET {', '.join(campos)} WHERE id = ?"
+            c.execute(query, tuple(params))
+            conn.commit()
+            return c.rowcount > 0
+
+    def eliminar_tractor(self, tractor_id):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('DELETE FROM tractores WHERE id = ?', (tractor_id,))
+            conn.commit()
+            return c.rowcount > 0
+
+    def vincular_tractor(self, tractor_id, unidad_id):
+        """Asigna un unidad_id a un tractor (vinculación manual)."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                c.execute('UPDATE tractores SET unidad_id = ?, actualizada_en = ? WHERE id = ?', (unidad_id, ahora, tractor_id))
+                conn.commit()
+                return c.rowcount > 0
+            except Exception:
                 return False
 
+    def desvincular_tractor(self, tractor_id):
+        with self._get_connection() as conn:
+            c = conn.cursor()
             ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            campos.append('actualizada_en = ?')
-            params.append(ahora)
-            params.append(tractor_id)
+            c.execute('UPDATE tractores SET unidad_id = NULL, actualizada_en = ? WHERE id = ?', (ahora, tractor_id))
+            conn.commit()
+            return c.rowcount > 0
 
-            with self._get_connection() as conn:
-                c = conn.cursor()
-                query = f"UPDATE tractores SET {', '.join(campos)} WHERE id = ?"
+    def obtener_tractor_por_unidad(self, unidad_id):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('SELECT id, placa, modelo, ano, estado, slot_id, metadata_json, unidad_id, creada_en, actualizada_en FROM tractores WHERE unidad_id = ?', (unidad_id,))
+            return c.fetchone()
+
+    # === MÉTODOS DE GESTIÓN DE PLANES ===
+
+    def crear_plan(self, slot_id, nombre, descripcion='', fecha_inicio=None, fecha_fin=None, estado='programado', metadata_json=''):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                c.execute('''INSERT INTO planes (slot_id, nombre, descripcion, fecha_inicio, fecha_fin, estado, creada_en, actualizada_en, metadata_json)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                          (slot_id, nombre, descripcion, fecha_inicio, fecha_fin, estado, ahora, ahora, metadata_json))
+                conn.commit()
+                return c.lastrowid
+            except Exception:
+                return None
+
+    def obtener_planes_por_slot(self, slot_id):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('''SELECT id, slot_id, nombre, descripcion, fecha_inicio, fecha_fin, estado, creada_en, actualizada_en, metadata_json
+                         FROM planes WHERE slot_id = ? ORDER BY fecha_inicio DESC''', (slot_id,))
+            return c.fetchall()
+
+    def obtener_plan_por_id(self, plan_id):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('''SELECT id, slot_id, nombre, descripcion, fecha_inicio, fecha_fin, estado, creada_en, actualizada_en, metadata_json
+                         FROM planes WHERE id = ?''', (plan_id,))
+            return c.fetchone()
+
+    def actualizar_plan(self, plan_id, nombre=None, descripcion=None, fecha_inicio=None, fecha_fin=None, estado=None, metadata_json=None):
+        campos = []
+        params = []
+        if nombre is not None:
+            campos.append('nombre = ?'); params.append(nombre)
+        if descripcion is not None:
+            campos.append('descripcion = ?'); params.append(descripcion)
+        if fecha_inicio is not None:
+            campos.append('fecha_inicio = ?'); params.append(fecha_inicio)
+        if fecha_fin is not None:
+            campos.append('fecha_fin = ?'); params.append(fecha_fin)
+        if estado is not None:
+            campos.append('estado = ?'); params.append(estado)
+        if metadata_json is not None:
+            campos.append('metadata_json = ?'); params.append(metadata_json)
+
+        if not campos:
+            return False
+
+        ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        campos.append('actualizada_en = ?'); params.append(ahora)
+        params.append(plan_id)
+
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            query = f"UPDATE planes SET {', '.join(campos)} WHERE id = ?"
+            c.execute(query, tuple(params))
+            conn.commit()
+            return c.rowcount > 0
+
+    def eliminar_plan(self, plan_id):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('DELETE FROM planes WHERE id = ?', (plan_id,))
+            conn.commit()
+            return c.rowcount > 0
+
+    # === MÉTODOS DE CATÁLOGO DE ACTIVIDADES (GLOBAL) ===
+
+    def obtener_catalogo_actividades(self, solo_activas=False):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            if solo_activas:
+                c.execute('''SELECT id, nombre, etapa, descripcion, como_se_realiza, programacion_recomendada, activa, creada_en, actualizada_en
+                             FROM catalogo_actividades
+                             WHERE activa = 1
+                             ORDER BY id ASC''')
+            else:
+                c.execute('''SELECT id, nombre, etapa, descripcion, como_se_realiza, programacion_recomendada, activa, creada_en, actualizada_en
+                             FROM catalogo_actividades
+                             ORDER BY id ASC''')
+            return c.fetchall()
+
+    def crear_actividad_catalogo(self, nombre, activa=1, etapa='', descripcion='', como_se_realiza='', programacion_recomendada=''):
+        nombre_limpio = (nombre or '').strip()
+        if not nombre_limpio:
+            return None
+
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                c.execute('''INSERT INTO catalogo_actividades
+                             (nombre, etapa, descripcion, como_se_realiza, programacion_recomendada, activa, creada_en, actualizada_en)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                          (nombre_limpio, (etapa or '').strip(), (descripcion or '').strip(), (como_se_realiza or '').strip(), (programacion_recomendada or '').strip(), int(bool(activa)), ahora, ahora))
+                conn.commit()
+                return c.lastrowid
+            except sqlite3.IntegrityError:
+                return None
+
+    def obtener_actividad_catalogo_por_id(self, actividad_id):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('''SELECT id, nombre, etapa, descripcion, como_se_realiza, programacion_recomendada, activa, creada_en, actualizada_en
+                         FROM catalogo_actividades
+                         WHERE id = ?''', (actividad_id,))
+            return c.fetchone()
+
+    def actualizar_actividad_catalogo(self, actividad_id, nombre=None, activa=None, etapa=None, descripcion=None, como_se_realiza=None, programacion_recomendada=None):
+        campos = []
+        params = []
+
+        if nombre is not None:
+            nombre_limpio = str(nombre).strip()
+            if not nombre_limpio:
+                return False
+            campos.append('nombre = ?')
+            params.append(nombre_limpio)
+
+        if activa is not None:
+            campos.append('activa = ?')
+            params.append(int(bool(activa)))
+
+        if etapa is not None:
+            campos.append('etapa = ?')
+            params.append(str(etapa).strip())
+
+        if descripcion is not None:
+            campos.append('descripcion = ?')
+            params.append(str(descripcion).strip())
+
+        if como_se_realiza is not None:
+            campos.append('como_se_realiza = ?')
+            params.append(str(como_se_realiza).strip())
+
+        if programacion_recomendada is not None:
+            campos.append('programacion_recomendada = ?')
+            params.append(str(programacion_recomendada).strip())
+
+        if not campos:
+            return False
+
+        ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        campos.append('actualizada_en = ?')
+        params.append(ahora)
+        params.append(actividad_id)
+
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            query = f"UPDATE catalogo_actividades SET {', '.join(campos)} WHERE id = ?"
+            try:
                 c.execute(query, tuple(params))
                 conn.commit()
                 return c.rowcount > 0
-
-        def eliminar_tractor(self, tractor_id):
-            with self._get_connection() as conn:
-                c = conn.cursor()
-                c.execute('DELETE FROM tractores WHERE id = ?', (tractor_id,))
-                conn.commit()
-                return c.rowcount > 0
-
-        def vincular_tractor(self, tractor_id, unidad_id):
-            """Asigna un unidad_id a un tractor (vinculación manual)."""
-            with self._get_connection() as conn:
-                c = conn.cursor()
-                ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                try:
-                    c.execute('UPDATE tractores SET unidad_id = ?, actualizada_en = ? WHERE id = ?', (unidad_id, ahora, tractor_id))
-                    conn.commit()
-                    return c.rowcount > 0
-                except Exception:
-                    return False
-
-        def desvincular_tractor(self, tractor_id):
-            with self._get_connection() as conn:
-                c = conn.cursor()
-                ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                c.execute('UPDATE tractores SET unidad_id = NULL, actualizada_en = ? WHERE id = ?', (ahora, tractor_id))
-                conn.commit()
-                return c.rowcount > 0
-
-        def obtener_tractor_por_unidad(self, unidad_id):
-            with self._get_connection() as conn:
-                c = conn.cursor()
-                c.execute('SELECT id, placa, modelo, ano, estado, slot_id, metadata_json, unidad_id, creada_en, actualizada_en FROM tractores WHERE unidad_id = ?', (unidad_id,))
-                return c.fetchone()
-
-        # === MÉTODOS DE GESTIÓN DE PLANES ===
-
-        def crear_plan(self, slot_id, nombre, descripcion='', fecha_inicio=None, fecha_fin=None, estado='programado', metadata_json=''):
-            with self._get_connection() as conn:
-                c = conn.cursor()
-                ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                try:
-                    c.execute('''INSERT INTO planes (slot_id, nombre, descripcion, fecha_inicio, fecha_fin, estado, creada_en, actualizada_en, metadata_json)
-                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                              (slot_id, nombre, descripcion, fecha_inicio, fecha_fin, estado, ahora, ahora, metadata_json))
-                    conn.commit()
-                    return c.lastrowid
-                except Exception:
-                    return None
-
-        def obtener_planes_por_slot(self, slot_id):
-            with self._get_connection() as conn:
-                c = conn.cursor()
-                c.execute('''SELECT id, slot_id, nombre, descripcion, fecha_inicio, fecha_fin, estado, creada_en, actualizada_en, metadata_json
-                             FROM planes WHERE slot_id = ? ORDER BY fecha_inicio DESC''', (slot_id,))
-                return c.fetchall()
-
-        def obtener_plan_por_id(self, plan_id):
-            with self._get_connection() as conn:
-                c = conn.cursor()
-                c.execute('''SELECT id, slot_id, nombre, descripcion, fecha_inicio, fecha_fin, estado, creada_en, actualizada_en, metadata_json
-                             FROM planes WHERE id = ?''', (plan_id,))
-                return c.fetchone()
-
-        def actualizar_plan(self, plan_id, nombre=None, descripcion=None, fecha_inicio=None, fecha_fin=None, estado=None, metadata_json=None):
-            campos = []
-            params = []
-            if nombre is not None:
-                campos.append('nombre = ?'); params.append(nombre)
-            if descripcion is not None:
-                campos.append('descripcion = ?'); params.append(descripcion)
-            if fecha_inicio is not None:
-                campos.append('fecha_inicio = ?'); params.append(fecha_inicio)
-            if fecha_fin is not None:
-                campos.append('fecha_fin = ?'); params.append(fecha_fin)
-            if estado is not None:
-                campos.append('estado = ?'); params.append(estado)
-            if metadata_json is not None:
-                campos.append('metadata_json = ?'); params.append(metadata_json)
-
-            if not campos:
+            except sqlite3.IntegrityError:
                 return False
 
-            ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            campos.append('actualizada_en = ?'); params.append(ahora)
-            params.append(plan_id)
-
-            with self._get_connection() as conn:
-                c = conn.cursor()
-                query = f"UPDATE planes SET {', '.join(campos)} WHERE id = ?"
-                c.execute(query, tuple(params))
-                conn.commit()
-                return c.rowcount > 0
-
-        def eliminar_plan(self, plan_id):
-            with self._get_connection() as conn:
-                c = conn.cursor()
-                c.execute('DELETE FROM planes WHERE id = ?', (plan_id,))
-                conn.commit()
-                return c.rowcount > 0
+    def eliminar_actividad_catalogo(self, actividad_id):
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute('DELETE FROM catalogo_actividades WHERE id = ?', (actividad_id,))
+            conn.commit()
+            return c.rowcount > 0
 
     def marcar_actividad_completada(self, actividad_id):
         """Marca una actividad como completada."""

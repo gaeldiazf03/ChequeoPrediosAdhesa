@@ -1,27 +1,31 @@
 {% extends "dashboard_main.html" %}
 
-{% block title %}Gestión de Planes{% endblock %}
+{% block title %}Gestión de Actividades{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/planes.css') }}">
 {% endblock %}
 
 {% block content %}
-<div class="container">
-  <h2>Gestión de Planes</h2>
-  <div class="admin-actions">
-    <button id="btnAgregarPlan" class="btn btn-primary">Agregar Plan</button>
+<div class="dashboard-header">
+  <h1>Catálogo de Actividades del Campo</h1>
+  <div class="header-actions">
+    <a href="{{ url_for('dashboard.index') }}" class="btn btn-secondary">Volver al Dashboard</a>
+    <button id="btnAgregarPlan" class="btn btn-primary">Agregar Proceso</button>
   </div>
+</div>
+
+<div class="container">
 
   <table class="table table-striped" id="tablaPlanes">
     <thead>
       <tr>
         <th>ID</th>
-        <th>Nombre</th>
-        <th>Slot</th>
-        <th>Inicio</th>
-        <th>Fin</th>
-        <th>Estado</th>
+        <th>Proceso</th>
+        <th>Etapa</th>
+        <th>Descripción</th>
+        <th>Cómo se realiza</th>
+        <th>Programación recomendada</th>
         <th>Acciones</th>
       </tr>
     </thead>
@@ -29,30 +33,49 @@
   </table>
 
   <div id="modalPlan" class="modal">
-    <div class="modal-dialog">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title">Agregar / Editar Plan</h5>
+          <h5 class="modal-title">Agregar / Editar Proceso</h5>
           <button id="cerrarModalPlan" class="close">×</button>
         </div>
         <div class="modal-body">
           <form id="formPlan">
             <input type="hidden" id="plan_id" />
             <div class="form-group">
-              <label>Nombre</label>
+              <label>Proceso</label>
               <input class="form-control" id="nombre" required />
             </div>
             <div class="form-group">
-              <label>Slot ID</label>
-              <input class="form-control" id="slot_id" type="number" />
+              <label>Etapa</label>
+              <select class="form-control" id="etapa">
+                <option value="">Seleccione una etapa</option>
+                <option value="Diagnóstico">Diagnóstico</option>
+                <option value="Preparación">Preparación</option>
+                <option value="Siembra">Siembra</option>
+                <option value="Establecimiento">Establecimiento</option>
+                <option value="Maleza">Maleza</option>
+                <option value="Nutrición">Nutrición</option>
+                <option value="Labores culturales">Labores culturales</option>
+                <option value="Riego">Riego</option>
+                <option value="Sanidad">Sanidad</option>
+                <option value="Soca">Soca</option>
+                <option value="Precosecha">Precosecha</option>
+                <option value="Cosecha">Cosecha</option>
+                <option value="Postcosecha">Postcosecha</option>
+                <option value="Renovación">Renovación</option>
+              </select>
             </div>
             <div class="form-group">
-              <label>Fecha Inicio</label>
-              <input class="form-control" id="fecha_inicio" type="date" />
+              <label>Descripción</label>
+              <textarea class="form-control" id="descripcion" rows="3"></textarea>
             </div>
             <div class="form-group">
-              <label>Fecha Fin</label>
-              <input class="form-control" id="fecha_fin" type="date" />
+              <label>Cómo se realiza</label>
+              <textarea class="form-control" id="como_se_realiza" rows="3"></textarea>
+            </div>
+            <div class="form-group">
+              <label>Programación recomendada</label>
+              <textarea class="form-control" id="programacion_recomendada" rows="3"></textarea>
             </div>
           </form>
         </div>
@@ -61,7 +84,6 @@
           <button id="cancelarModalPlan" class="btn btn-secondary">Cancelar</button>
         </div>
       </div>
-    </div>
   </div>
 
 </div>
