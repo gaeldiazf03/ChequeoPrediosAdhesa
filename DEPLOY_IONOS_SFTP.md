@@ -5,6 +5,41 @@ Este proyecto ya incluye archivos para hosting compartido:
 - `wsgi.py`
 - `.htaccess.example`
 - `.env.production.example`
+- `setup_python39_ionos.sh`
+
+Version objetivo de ejecucion: **Python 3.9.x**
+
+## 0) Limpieza si ya subiste todo al servidor
+
+Si ya hiciste upload completo y ahora no sabes que borrar, limpia solo lo que rompe compatibilidad o sobra:
+
+1. Entrar al proyecto:
+
+```bash
+cd /homepages/xx/dxxxxxxxxx/htdocs/ChequeoPrediosAdhesa
+```
+
+2. Ejecutar script de limpieza incluido:
+
+```bash
+chmod +x cleanup_ionos_deploy.sh
+./cleanup_ionos_deploy.sh
+```
+
+3. Recrear venv de Linux servidor e instalar:
+
+```bash
+python3.9 -m venv .venv
+source .venv/bin/activate
+pip install -U pip setuptools wheel
+pip install -r requirements.txt
+```
+
+4. Verificar `.htaccess`:
+- `PassengerAppRoot` debe ser ruta absoluta real de tu app.
+- `PassengerPython` debe apuntar a `.../.venv/bin/python`.
+
+5. Reiniciar Passenger desde panel IONOS.
 
 ## 1) Preparar entorno local antes de subir
 
@@ -12,6 +47,7 @@ Este proyecto ya incluye archivos para hosting compartido:
 2. Definir `SECRET_KEY` real y credenciales SMTP reales.
 3. Verificar que `FLASK_DEBUG=0`.
 4. Verificar que `RUN_SCHEDULERS=1` solo si quieres tareas en segundo plano en el hosting.
+5. Verificar `python3.9 --version` antes de instalar dependencias.
 
 ## 2) Archivos que SI debes subir por SFTP
 
@@ -42,6 +78,7 @@ No subas:
    - `PassengerAppRoot`
    - `PassengerPython`
 3. Asegura que `PassengerStartupFile` apunte a `passenger_wsgi.py`.
+4. Asegura que `PassengerPython` sea una ruta absoluta real al venv (no ruta relativa).
 
 Ejemplo de referencia:
 
@@ -59,13 +96,35 @@ Si tienes acceso SSH:
 
 ```bash
 cd /homepages/xx/dxxxxxxxxx/htdocs/ChequeoPrediosAdhesa
-python3 -m venv .venv
+python3.9 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
+Alternativa rapida usando script incluido en el repo:
+
+```bash
+cd /homepages/xx/dxxxxxxxxx/htdocs/ChequeoPrediosAdhesa
+chmod +x setup_python39_ionos.sh
+./setup_python39_ionos.sh
+```
+
+Si `python3.9` no existe, valida si esta disponible con:
+
+```bash
+python3.9 --version
+python3 --version
+which python3.9
+which python3
+```
+
+Si solo existe `python3`, crea el venv con esa ruta y ajusta `.htaccess` para que `PassengerPython` apunte a `/.venv/bin/python`.
+
 Si no tienes SSH, deja el codigo subido y solicita en IONOS que el entorno Python del dominio use `requirements.txt` y el startup file `passenger_wsgi.py`.
+
+Nota: en hosting compartido sin `sudo` no se puede instalar Python del sistema por `apt`. Debes usar la version Python que IONOS ya tenga habilitada para tu cuenta.
+Si el panel no expone Python 3.9 para tu cuenta, no podras forzarlo via SFTP.
 
 ## 5) Variables de entorno criticas
 

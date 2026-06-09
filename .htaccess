@@ -1,0 +1,6 @@
+# IONOS
+PassengerEnabled on
+PassengerAppType wsgi
+PassengerStartupFile passenger_wsgi.py
+PassengerAppRoot /adehsa/
+PassengerPython /adehsa/.venv/bin/python
