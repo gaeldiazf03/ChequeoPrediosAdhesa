@@ -1650,5 +1650,14 @@ class DatabaseManager:
 
 # --- INSTANCIA GLOBAL ---
 directorio_actual = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(directorio_actual, 'adhesa.db')
+DB_PATH = os.environ.get('SQLITE_DB_PATH') or os.environ.get('DB_PATH')
+if not DB_PATH:
+    DB_PATH = os.path.join(directorio_actual, 'adhesa.db')
+elif not os.path.isabs(DB_PATH):
+    DB_PATH = os.path.join(directorio_actual, DB_PATH)
+
+directorio_db = os.path.dirname(DB_PATH)
+if directorio_db:
+    os.makedirs(directorio_db, exist_ok=True)
+
 db = DatabaseManager(DB_PATH)

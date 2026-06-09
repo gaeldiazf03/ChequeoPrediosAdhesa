@@ -1,0 +1,9 @@
+# IONOS + Passenger example (ajusta rutas reales de tu cuenta)
+PassengerEnabled on
+PassengerAppType wsgi
+PassengerStartupFile passenger_wsgi.py
+
+# IMPORTANTE:
+# Reemplaza con la ruta real del proyecto y del Python de tu entorno virtual.
+# PassengerAppRoot /homepages/xx/dxxxxxxxxx/htdocs/tu_app
+# PassengerPython /homepages/xx/dxxxxxxxxx/htdocs/tu_app/.venv/bin/python
