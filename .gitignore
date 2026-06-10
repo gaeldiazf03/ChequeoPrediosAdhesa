@@ -1,9 +1,6 @@
-﻿# Environment
-.env
-.env.*
-!.env.production.example
+﻿.env
+.env.production.example
 
-# Python cache/venv
 __pycache__/
 *.py[cod]
 *.pyo
@@ -12,18 +9,15 @@ __pycache__/
 .venv/
 venv/
 
-# Tooling
 .vscode/
 .idea/
 
-# Runtime artifacts
 *.log
 adhesa.db
 database.db
 instance/
 RESUMEN/
 
-# VCS/build
 .git/
 dist/
 build/
