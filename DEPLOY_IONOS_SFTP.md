@@ -9,6 +9,9 @@ Este proyecto ya incluye archivos para hosting compartido:
 
 Version objetivo de ejecucion: **Python 3.9.x**
 
+Compatibilidad de dependencias para Python 3.9:
+- `python-dotenv` debe quedar en `1.2.1` (la `1.2.2` requiere Python >=3.10).
+
 ## 0) Limpieza si ya subiste todo al servidor
 
 Si ya hiciste upload completo y ahora no sabes que borrar, limpia solo lo que rompe compatibilidad o sobra:

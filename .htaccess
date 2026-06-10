@@ -2,5 +2,5 @@
 PassengerEnabled on
 PassengerAppType wsgi
 PassengerStartupFile passenger_wsgi.py
-PassengerAppRoot /adehsa/
-PassengerPython /adehsa/.venv/bin/python
+PassengerAppRoot /kunden/homepages/24/d515347316/htdocs/adehsa
+PassengerPython /kunden/homepages/24/d515347316/htdocs/adehsa/.venv/bin/python
